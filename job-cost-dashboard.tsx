@@ -25,6 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+// Check if code is running in browser environment
+const isBrowser = () => typeof window !== "undefined"
+
 const defaultJobData = {
   projectName: "New Project",
   customerName: "",
@@ -58,7 +61,7 @@ function JobCostDashboard() {
     position: "Estimator",
   })
   const [isQuotePreviewOpen, setIsQuotePreviewOpen] = useState(false)
-  const [quoteNumber, setQuoteNumber] = useState(getNextQuoteNumber())
+  const [quoteNumber, setQuoteNumber] = useState(1001) // Default value
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
@@ -66,28 +69,130 @@ function JobCostDashboard() {
   const { toast } = useToast()
 
   useEffect(() => {
-    setQuoteNumber(getNextQuoteNumber())
+    // Only run this code in the browser
+    if (isBrowser()) {
+      setQuoteNumber(getNextQuoteNumber())
 
-    // Add some default sections for demo purposes
-    if (jobData.sections.length === 0) {
-      const defaultSections = [
-        createSectionFromTemplate("Prep"),
-        createSectionFromTemplate("Bulk Milling"),
-        createSectionFromTemplate("Mainline Paving"),
-      ]
+      // Add some default sections for demo purposes
+      if (jobData.sections.length === 0) {
+        const defaultSections = [
+          createSectionFromTemplate("Prep"),
+          createSectionFromTemplate("Bulk Milling"),
+          createSectionFromTemplate("Mainline Paving"),
+        ]
 
-      setJobData({
-        ...jobData,
-        sections: defaultSections,
-        selectedSections: [defaultSections[0].id],
-      })
+        setJobData({
+          ...jobData,
+          sections: defaultSections,
+          selectedSections: [defaultSections[0].id],
+        })
 
-      // Auto-expand the first section
-      setExpandedSections({
-        [defaultSections[0].id]: true,
-      })
+        // Auto-expand the first section
+        setExpandedSections({
+          [defaultSections[0].id]: true,
+        })
+      }
     }
   }, [])
+
+  // Rest of the component remains the same...
+
+  // Update the handleSaveConfig function to check for browser environment
+  const handleSaveConfig = () => {
+    try {
+      // Create a complete project state object
+      const projectState = {
+        jobData,
+        contactInfo,
+        quoteNumber,
+        expandedSections,
+        date: new Date().toISOString(),
+      }
+
+      // Only save to localStorage in browser environment
+      if (isBrowser()) {
+        // Save to localStorage
+        localStorage.setItem("jobData", JSON.stringify(projectState))
+
+        // Also offer to download as a JSON file
+        const dataStr = JSON.stringify(projectState, null, 2)
+        const dataBlob = new Blob([dataStr], { type: "application/json" })
+        const url = URL.createObjectURL(dataBlob)
+
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `${jobData.projectName.replace(/\s+/g, "_")}_project.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+
+      toast({
+        title: "Configuration saved.",
+        description: "Your job configuration has been saved to localStorage and downloaded as a JSON file.",
+      })
+    } catch (error) {
+      console.error("Error saving configuration:", error)
+      toast({
+        title: "Error saving configuration",
+        description: "There was an error saving your configuration. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Update the handleLoadConfig function to check for browser environment
+  const handleLoadConfig = () => {
+    try {
+      // Only access localStorage in browser environment
+      if (isBrowser()) {
+        const savedData = localStorage.getItem("jobData")
+        if (savedData) {
+          const parsedData = JSON.parse(savedData)
+
+          // Check if the data has the expected structure
+          if (parsedData.jobData) {
+            setJobData(parsedData.jobData)
+
+            // Restore other state if available
+            if (parsedData.contactInfo) setContactInfo(parsedData.contactInfo)
+            if (parsedData.quoteNumber) setQuoteNumber(parsedData.quoteNumber)
+            if (parsedData.expandedSections) setExpandedSections(parsedData.expandedSections)
+
+            toast({
+              title: "Configuration loaded.",
+              description: "Your saved job configuration has been loaded.",
+            })
+          } else {
+            // Handle legacy format (just jobData)
+            setJobData(parsedData)
+            toast({
+              title: "Configuration loaded (legacy format).",
+              description: "Your saved job configuration has been loaded in legacy format.",
+            })
+          }
+        } else {
+          toast({
+            title: "No saved configuration found.",
+            description: "There is no saved configuration in localStorage.",
+            variant: "destructive",
+          })
+        }
+      }
+    } catch (error) {
+      console.error("Error loading configuration:", error)
+      toast({
+        title: "Error loading configuration",
+        description: "There was an error loading your configuration. The saved data may be corrupted.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // The rest of the component remains the same...
+
+  // Keep all the existing code below this point
 
   const createSectionFromTemplate = (templateName) => {
     const template = sectionTemplates[templateName]
@@ -372,91 +477,6 @@ function JobCostDashboard() {
       ...jobData,
       selectedSections: [...new Set([...jobData.selectedSections, ...sectionsOfType])],
     })
-  }
-
-  const handleSaveConfig = () => {
-    try {
-      // Create a complete project state object
-      const projectState = {
-        jobData,
-        contactInfo,
-        quoteNumber,
-        expandedSections,
-        date: new Date().toISOString(),
-      }
-
-      // Save to localStorage
-      localStorage.setItem("jobData", JSON.stringify(projectState))
-
-      // Also offer to download as a JSON file
-      const dataStr = JSON.stringify(projectState, null, 2)
-      const dataBlob = new Blob([dataStr], { type: "application/json" })
-      const url = URL.createObjectURL(dataBlob)
-
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${jobData.projectName.replace(/\s+/g, "_")}_project.json`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      toast({
-        title: "Configuration saved.",
-        description: "Your job configuration has been saved to localStorage and downloaded as a JSON file.",
-      })
-    } catch (error) {
-      console.error("Error saving configuration:", error)
-      toast({
-        title: "Error saving configuration",
-        description: "There was an error saving your configuration. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleLoadConfig = () => {
-    try {
-      const savedData = localStorage.getItem("jobData")
-      if (savedData) {
-        const parsedData = JSON.parse(savedData)
-
-        // Check if the data has the expected structure
-        if (parsedData.jobData) {
-          setJobData(parsedData.jobData)
-
-          // Restore other state if available
-          if (parsedData.contactInfo) setContactInfo(parsedData.contactInfo)
-          if (parsedData.quoteNumber) setQuoteNumber(parsedData.quoteNumber)
-          if (parsedData.expandedSections) setExpandedSections(parsedData.expandedSections)
-
-          toast({
-            title: "Configuration loaded.",
-            description: "Your saved job configuration has been loaded.",
-          })
-        } else {
-          // Handle legacy format (just jobData)
-          setJobData(parsedData)
-          toast({
-            title: "Configuration loaded (legacy format).",
-            description: "Your saved job configuration has been loaded in legacy format.",
-          })
-        }
-      } else {
-        toast({
-          title: "No saved configuration found.",
-          description: "There is no saved configuration in localStorage.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error loading configuration:", error)
-      toast({
-        title: "Error loading configuration",
-        description: "There was an error loading your configuration. The saved data may be corrupted.",
-        variant: "destructive",
-      })
-    }
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
