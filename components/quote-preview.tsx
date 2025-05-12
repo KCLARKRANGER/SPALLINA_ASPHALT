@@ -9,6 +9,8 @@ import { formatQuoteNumber } from "../utils/quote-number"
 import { Printer, Mail, X, Download, ChevronDown, ChevronUp } from "lucide-react"
 import JSZip from "jszip"
 import FileSaver from "file-saver"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 
 interface QuotePreviewProps {
   open: boolean
@@ -30,12 +32,20 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
   useEffect(() => {
     if (open) {
       setEditedJobData({ ...jobData })
-      setEditedContactInfo({ ...contactInfo })
+      // Use jobData.contactInfo if available, otherwise use the contactInfo prop
+      setEditedContactInfo(jobData.contactInfo || { ...contactInfo })
     }
   }, [open, jobData, contactInfo])
 
   const handleSave = () => {
-    onSave(editedJobData, editedContactInfo)
+    // Pass both the updated job data and contact info to the parent component
+    onSave(
+      {
+        ...editedJobData,
+        contactInfo: editedContactInfo,
+      },
+      editedContactInfo,
+    )
     setEditMode(false)
   }
 
@@ -128,7 +138,103 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
     }
   }
 
-  // Calculate section totals
+  // Generate PDF for email
+  const generatePDF = () => {
+    const doc = new jsPDF()
+
+    // Add header
+    doc.setFontSize(20)
+    doc.text("Job Cost Estimate", 20, 20)
+
+    doc.setFontSize(12)
+    doc.text(`Project: ${editedJobData.projectName}`, 20, 30)
+    doc.text(`Location: ${editedJobData.location || "N/A"}`, 20, 40)
+    doc.text(`Date: ${editedJobData.date || new Date().toLocaleDateString()}`, 20, 50)
+    doc.text(`Total Area: ${editedJobData.totalArea?.toLocaleString() || "0"} sq ft`, 20, 60)
+    doc.text(`Total Tonnage: ${editedJobData.totalTonnage?.toLocaleString() || "0"} tons`, 20, 70)
+
+    // Add sections table
+    const sectionsTableData = editedJobData.sections
+      .filter((section) => editedJobData.selectedSections.includes(section.id))
+      .map((section) => [
+        section.name,
+        section.area?.toString() || "0",
+        section.tons?.toString() || "0",
+        `$${section.equipment.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
+        `$${section.labor.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
+        `$${section.materials.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
+        `$${section.trucking.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
+        `$${calculateSectionTotal(section).toFixed(2)}`,
+      ])
+
+    autoTable(doc, {
+      startY: 80,
+      head: [["Section", "Area (sq ft)", "Tons", "Equipment", "Labor", "Materials", "Trucking", "Total"]],
+      body: sectionsTableData,
+    })
+
+    // Add total
+    const finalY = (doc as any).lastAutoTable.finalY || 150
+    doc.text(`Total Job Cost: $${calculateJobTotal().toFixed(2)}`, 20, finalY + 10)
+
+    // Add notes if available
+    if (editedJobData.notes) {
+      doc.text("Notes:", 20, finalY + 20)
+      doc.text(editedJobData.notes, 20, finalY + 30)
+    }
+
+    return doc
+  }
+
+  // Handle email with PDF
+  const handleEmail = () => {
+    // Generate PDF
+    const doc = generatePDF()
+    const pdfBlob = doc.output("blob")
+    const pdfFile = new File([pdfBlob], `${editedJobData.projectName.replace(/\s+/g, "_")}_estimate.pdf`, {
+      type: "application/pdf",
+    })
+
+    // Create email draft
+    const subject = `Estimate for ${editedJobData.projectName}`
+    const body = `Dear Customer,
+
+Please find attached the estimate for your project: ${editedJobData.projectName}.
+
+Project Details:
+- Location: ${editedJobData.location || "N/A"}
+- Date: ${editedJobData.date || new Date().toLocaleDateString()}
+- Total Area: ${editedJobData.totalArea?.toLocaleString() || "0"} sq ft
+- Total Tonnage: ${editedJobData.totalTonnage?.toLocaleString() || "0"} tons
+- Total Cost: $${calculateJobTotal().toFixed(2)}
+
+If you have any questions or would like to proceed with this estimate, please contact us.
+
+Best regards,
+${editedContactInfo.name || editedJobData.contactInfo?.name}
+${editedContactInfo.position || editedJobData.contactInfo?.position}
+${editedContactInfo.company || editedJobData.contactInfo?.company}
+${editedContactInfo.phone || editedJobData.contactInfo?.phone}
+${editedContactInfo.email || editedJobData.contactInfo?.email}
+`
+
+    // Create mailto link with subject and body
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+
+    // Create a temporary link to download the PDF
+    const pdfUrl = URL.createObjectURL(pdfFile)
+    const downloadLink = document.createElement("a")
+    downloadLink.href = pdfUrl
+    downloadLink.download = `${editedJobData.projectName.replace(/\s+/g, "_")}_estimate.pdf`
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+
+    // Open email client
+    window.location.href = mailtoLink
+  }
+
+  // Calculate section totals (without markups for project summary)
   const calculateSectionTotal = (section: any) => {
     const equipmentTotal = section.equipment.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
     const laborTotal = section.labor.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
@@ -156,7 +262,7 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
     return equipmentTotal + laborTotal + materialsTotal + truckingTotal + mobilizationTotal
   }
 
-  // Calculate job total
+  // Calculate job total (without markups for project summary)
   const calculateJobTotal = () => {
     return editedJobData.sections
       .filter((section: any) => editedJobData.selectedSections.includes(section.id))
@@ -277,7 +383,7 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
               <Printer className="mr-2 h-4 w-4" />
               Print
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleEmail}>
               <Mail className="mr-2 h-4 w-4" />
               Email
             </Button>
@@ -332,6 +438,12 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
               <div>
                 <p>
                   <strong>Date:</strong> {editedJobData.date || "N/A"}
+                </p>
+                <p>
+                  <strong>Total Area:</strong> {editedJobData.totalArea?.toLocaleString() || "0"} sq ft
+                </p>
+                <p>
+                  <strong>Total Tonnage:</strong> {editedJobData.totalTonnage?.toLocaleString() || "0"} tons
                 </p>
               </div>
             </div>
@@ -425,8 +537,8 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
                       </div>
                       {sectionEquipment.items.map((item, itemIdx) => (
                         <p key={`equipment-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity} {item.quantity > 1 ? "units" : "unit"} @ ${item.rate}/day = $
-                          {item.total?.toFixed(2)}
+                          {item.name}: {item.quantity} {item.quantity > 1 ? "units" : "unit"} @ ${item.rate}/hr ×{" "}
+                          {item.hours} hrs = ${item.total?.toFixed(2)}
                         </p>
                       ))}
                     </div>
@@ -506,8 +618,8 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
                       </div>
                       {sectionTrucking.items.map((item, itemIdx) => (
                         <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity} {item.quantity > 1 ? "trucks" : "truck"} @ ${item.rate}/day ×{" "}
-                          {item.hours / 8} days = ${item.total?.toFixed(2)}
+                          {item.name}: {item.quantity} {item.quantity > 1 ? "trucks" : "truck"} @ ${item.rate}/hr ×{" "}
+                          {item.hours} hrs = ${item.total?.toFixed(2)}
                         </p>
                       ))}
                     </div>
