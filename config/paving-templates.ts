@@ -8,7 +8,8 @@ export const pavingTypes = [
   "Top Course",
   "Shoulder Paving",
   "Driveway Paving",
-  "Parking Lot Paving",
+  "Parking Lot Paving Top",
+  "Parking Lot Paving Binder",
   "Patching",
   "Tack Coat",
   "Striping",
@@ -43,6 +44,8 @@ export const equipmentList = [
   { name: "D1 - Komatsu 399PX Dozer",    hourlyRate: 37.50 },
   { name: "D6 CAT D6 Dozer",             hourlyRate: 50.00 },
   { name: "EX 2020 CAT 336 Excavator",   hourlyRate: 56.25 },
+  { name: "Pickup",                      hourlyRate: 12.50 },
+  { name: "Tack Coat Truck",             hourlyRate: 165.00 },
 ];
 
 // Define section templates with default equipment, labor, materials, and trucking
@@ -170,9 +173,28 @@ export const sectionTemplates: Record<string, any> = {
     materials: [{ name: "Driveway Mix", unit: "tons", quantity: 0, rate: 95 }],
     trucking: [{ name: "Dump Truck", quantity: 1, hours: 8 }],
   },
-  "Parking Lot Paving": {
+  "Parking Lot Paving Top": {
     equipment: [
-      { name: "AP2 CAT Paver AP1000F", quantity: 1, hours: 8, includesOperator: false },
+      { name: "Weiler Paver", quantity: 1, hours: 8, includesOperator: false },
+      { name: "R1 Hamm Roller HD-120", quantity: 1, hours: 8, includesOperator: false },
+      { name: "R4 SM Hamm Roller HD-10C", quantity: 1, hours: 8, includesOperator: false },
+      { name: "W-11 Mack Water Truck", quantity: 1, hours: 8, includesOperator: false },
+      { name: "Tack Coat Truck", quantity: 1, hours: 8, includesOperator: True },
+      { name: "Pickup", quantity: 1, hours: 8, includesOperator: false },
+    ],
+    labor: [
+      { name: "Foreman", quantity: 1, hours: 8 },
+      { name: "Operator", quantity: 3, hours: 8 },
+      { name: "Screedman", quantity: 2, hours: 8 },
+      { name: "Raker", quantity: 2, hours: 8 },
+      { name: "Laborer", quantity: 2, hours: 8 },
+    ],
+    materials: [{ name: "Commercial Mix", unit: "tons", quantity: 0, rate: 85 }],
+    trucking: [{ name: "Flowboy", quantity: 2, hours: 8 }],
+  },
+  "Parking Lot Paving Binder": {
+    equipment: [
+      { name: "Weiler Paver", quantity: 1, hours: 8, includesOperator: false },
       { name: "R1 Hamm Roller HD-120", quantity: 1, hours: 8, includesOperator: false },
       { name: "R4 SM Hamm Roller HD-10C", quantity: 1, hours: 8, includesOperator: false },
       { name: "W-11 Mack Water Truck", quantity: 1, hours: 8, includesOperator: false },
