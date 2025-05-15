@@ -1,391 +1,635 @@
 "use client"
 
-import { CardTitle } from "@/components/ui/card"
-import { CardHeader } from "@/components/ui/card"
-import type React from "react"
-import { useState, useEffect, useRef } from "react"
-import { pavingTypes, sectionTemplates, equipmentList } from "./config/paving-templates"
-import { calculateTonsFromArea } from "./utils/asphalt-calculations"
-import { getNextQuoteNumber } from "./utils/quote-number"
+import React, { useState } from "react"
+import type { ChangeEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CSVExport } from "@/components/csv-export"
-import { ContactForm, type ContactInfo } from "@/components/contact-form"
-import { Calculator } from "@/components/calculator"
-import { MixCalculator } from "@/components/mix-calculator"
-import { useToast } from "@/components/ui/use-toast"
-import { Save, FileText, Plus, ChevronDown, ChevronUp, Trash2, Upload, Settings } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { jsPDF } from "jspdf"
-import autoTable from "jspdf-autotable"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/use-toast"
+import { generateQuoteNumber } from "@/utils/quote-number"
+import { calculateTonsFromArea } from "@/utils/asphalt-calculations"
+import { pavingTypes, equipmentList, materialTypes, sectionTemplates } from "@/config/paving-templates"
+import {
+  Save,
+  FileText,
+  Plus,
+  Trash2,
+  Settings,
+  Download,
+  Upload,
+  Copy,
+  Check,
+  X,
+  FileUp,
+  FileDown,
+  Pencil,
+  ChevronDown,
+  ChevronUp,
+  Calculator,
+} from "lucide-react"
 import { QuotePreview } from "@/components/quote-preview"
+import { SectionMaterials } from "@/components/section-materials"
 
-// Check if code is running in browser environment
-const isBrowser = () => typeof window !== "undefined"
+// Import the crew data at the top of the file, after the other imports
+import { crewMembers, getCrewMemberById } from "@/config/crew-data"
 
-const defaultJobData = {
-  projectName: "New Project",
-  customerName: "",
-  location: "",
-  date: new Date().toISOString().split("T")[0],
-  totalArea: 0,
-  totalTonnage: 0,
-  sections: [],
-  selectedSections: [],
-  notes: "",
-  terms: "",
-  contactInfo: {
-    name: "John Smith",
-    phone: "(585) 658-2248",
-    email: "info@spallinamaterials.com",
-    company: "Spallina Materials",
-    position: "Estimator",
-  },
-  mobilization: {
-    enabled: false,
-    sectionSpecific: false,
-    numTrucks: 1,
-    tripType: "one-way",
-    sectionMobilization: {},
-  },
-  markups: {}, // Store markup percentages for each section
-}
+// Trucking function options
+const truckingFunctions = [
+  "Hauling Millings",
+  "Hauling Asphalt",
+  "Hauling Aggregate",
+  "Hauling Tonnage",
+  "General Hauling",
+  "Material Delivery",
+]
 
-function JobCostDashboard() {
-  const [jobData, setJobData] = useState(defaultJobData)
-  const [sectionName, setSectionName] = useState("")
-  const [area, setArea] = useState<number | undefined>(undefined)
-  const [depth, setDepth] = useState<number | undefined>(undefined)
-  const [activeTab, setActiveTab] = useState("sections")
-  const [isContactFormOpen, setIsContactFormOpen] = useState(false)
-  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
-  const [isMixCalculatorOpen, setIsMixCalculatorOpen] = useState(false)
-  const [contactInfo, setContactInfo] = useState<ContactInfo>({
-    name: "John Smith",
-    phone: "(585) 658-2248",
-    email: "info@spallinamaterials.com",
-    company: "Spallina Materials",
-    position: "Estimator",
+export default function JobCostDashboard() {
+  // State for job data
+  const [jobData, setJobData] = useState({
+    quoteNumber: generateQuoteNumber(),
+    date: new Date().toISOString().split("T")[0],
+    customerName: "",
+    projectName: "",
+    projectLocation: "",
+    contactInfo: {
+      preparedBy: "",
+      phone: "",
+      email: "",
+    },
+    sections: [],
+    selectedSections: [],
+    markup: {
+      equipment: 15,
+      labor: 15,
+      materials: 15,
+      trucking: 15,
+      overtime: 15,
+    },
+    notes: "",
+    totalArea: 0,
+    totalTonnage: 0,
   })
-  const [isQuotePreviewOpen, setIsQuotePreviewOpen] = useState(false)
-  const [quoteNumber, setQuoteNumber] = useState(1001) // Default value
+
+  // State for UI controls
+  const [activeTab, setActiveTab] = useState("job-info")
+  const [isAddSectionDialogOpen, setIsAddSectionDialogOpen] = useState(false)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-  const [importError, setImportError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const { toast } = useToast()
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null)
+  const [editingSectionName, setEditingSectionName] = useState("")
+  const [configDialogOpen, setConfigDialogOpen] = useState(false)
+  const [showQuotePreview, setShowQuotePreview] = useState(false)
 
-  const [isConfigOpen, setIsConfigOpen] = useState(false)
-  const [editableEquipmentList, setEditableEquipmentList] = useState(equipmentList)
-
-  // Load equipment list from localStorage if available
-  useEffect(() => {
-    if (isBrowser()) {
-      const savedEquipmentList = localStorage.getItem("equipmentList")
-      if (savedEquipmentList) {
-        try {
-          const parsed = JSON.parse(savedEquipmentList)
-          if (Array.isArray(parsed)) {
-            setEditableEquipmentList(parsed)
-          }
-        } catch (e) {
-          console.error("Error parsing saved equipment list:", e)
-          // If there's an error, initialize with the default list
-          setEditableEquipmentList(equipmentList)
-        }
-      } else {
-        // If no saved list, initialize with the default list
-        setEditableEquipmentList(equipmentList)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    // Only run this code in the browser
-    if (isBrowser()) {
-      setQuoteNumber(getNextQuoteNumber())
-
-      // Add some default sections for demo purposes
-      if (jobData.sections.length === 0) {
-        const defaultSections = [
-          createSectionFromTemplate("Prep"),
-          createSectionFromTemplate("Bulk Milling"),
-          createSectionFromTemplate("Mainline Paving"),
-        ]
-
-        setJobData({
-          ...jobData,
-          sections: defaultSections,
-          selectedSections: [defaultSections[0].id],
-        })
-
-        // Auto-expand the first section
-        setExpandedSections({
-          [defaultSections[0].id]: true,
-        })
-      }
-    }
-  }, [])
-
-  // Update the handleSaveConfig function to check for browser environment
-  const handleSaveConfig = () => {
-    try {
-      // Create a complete project state object
-      const projectState = {
-        jobData,
-        contactInfo: jobData.contactInfo,
-        quoteNumber,
-        expandedSections,
-        date: new Date().toISOString(),
-      }
-
-      // Only save to localStorage in browser environment
-      if (isBrowser()) {
-        // Save to localStorage
-        localStorage.setItem("jobData", JSON.stringify(projectState))
-
-        // Also offer to download as a JSON file
-        const dataStr = JSON.stringify(projectState, null, 2)
-        const dataBlob = new Blob([dataStr], { type: "application/json" })
-        const url = URL.createObjectURL(dataBlob)
-
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `${jobData.projectName.replace(/\s+/g, "_")}_project.json`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-      }
-
-      toast({
-        title: "Configuration saved.",
-        description: "Your job configuration has been saved to localStorage and downloaded as a JSON file.",
-      })
-    } catch (error) {
-      console.error("Error saving configuration:", error)
-      toast({
-        title: "Error saving configuration",
-        description: "There was an error saving your configuration. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Update the handleLoadConfig function to check for browser environment
-  const handleLoadConfig = () => {
-    try {
-      // Only access localStorage in browser environment
-      if (isBrowser()) {
-        const savedData = localStorage.getItem("jobData")
-        if (savedData) {
-          const parsedData = JSON.parse(savedData)
-
-          // Check if the data has the expected structure
-          if (parsedData.jobData) {
-            setJobData(parsedData.jobData)
-
-            // Restore other state if available
-            if (parsedData.contactInfo) setContactInfo(parsedData.contactInfo)
-            if (parsedData.quoteNumber) setQuoteNumber(parsedData.quoteNumber)
-            if (parsedData.expandedSections) setExpandedSections(parsedData.expandedSections)
-
-            toast({
-              title: "Configuration loaded.",
-              description: "Your saved job configuration has been loaded.",
-            })
-          } else {
-            // Handle legacy format (just jobData)
-            setJobData(parsedData)
-            toast({
-              title: "Configuration loaded (legacy format).",
-              description: "Your saved job configuration has been loaded in legacy format.",
-            })
-          }
-        } else {
-          toast({
-            title: "No saved configuration found.",
-            description: "There is no saved configuration in localStorage.",
-            variant: "destructive",
-          })
-        }
-      }
-    } catch (error) {
-      console.error("Error loading configuration:", error)
-      toast({
-        title: "Error loading configuration",
-        description: "There was an error loading your configuration. The saved data may be corrupted.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const createSectionFromTemplate = (templateName) => {
+  // Function to add a new section from a template
+  const addSectionFromTemplate = (templateName: string) => {
     const template = sectionTemplates[templateName]
-    if (!template) return null
+    if (!template) return
 
-    // Add rates to equipment based on the equipment list
-    const equipmentWithRates = template.equipment.map((item) => {
+    const newSectionId = `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+    // Process equipment to ensure rates are set correctly
+    const processedEquipment = template.equipment.map((item) => {
       const equipmentItem = equipmentList.find((e) => e.name === item.name)
-      const rate = equipmentItem ? equipmentItem.hourlyRate : 0
-
+      const rate = equipmentItem ? equipmentItem.hourlyRate : item.rate || 0
       return {
         ...item,
-        rate,
-        total: item.quantity * item.hours * rate, // Hourly rate
+        rate: rate,
+        total: item.quantity * item.hours * rate,
       }
     })
 
-    // Add realistic rates to labor
-    const laborWithRates = template.labor.map((item) => {
-      let rate = 0
-      // Assign rates based on role
-      if (item.name.includes("Foreman")) rate = 65
-      else if (item.name.includes("Operator")) rate = 55
-      else if (item.name.includes("Screedman")) rate = 50
-      else if (item.name.includes("Raker")) rate = 45
-      else if (item.name.includes("Laborer")) rate = 40
-      else if (item.name.includes("Flagger")) rate = 35
-      else rate = 45 // Default rate
-
-      return { ...item, rate, total: item.quantity * item.hours * rate }
+    // Add thickness field to materials
+    const processedMaterials = template.materials.map((item) => {
+      return {
+        ...item,
+        thickness: item.thickness || 0,
+        total: item.quantity * item.rate,
+      }
     })
 
-    // Add realistic rates to trucking
-    const truckingWithRates = template.trucking.map((item) => {
-      let rate = 0
-      // Assign rates based on truck type
-      if (item.name.includes("Dump Truck")) rate = 95
-      else if (item.name.includes("Flowboy")) rate = 125
-      else rate = 100 // Default rate
-
-      return { ...item, rate, total: item.quantity * item.hours * rate } // Hourly rate
-    })
-
-    return {
-      id: `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    const newSection = {
+      id: newSectionId,
       name: templateName,
+      area: 0,
+      tons: 0,
       length: 0,
       width: 0,
-      depth: 0,
-      area: 0, // Changed from 1000 to 0
-      tons: 0, // Changed from conditional 120 to 0
-      equipment: equipmentWithRates,
-      labor: laborWithRates,
-      materials: template.materials.map((item) => ({ ...item, total: calculateMaterialTotal(item) })),
-      trucking: truckingWithRates,
+      equipment: processedEquipment,
+      labor: [...template.labor],
+      materials: processedMaterials,
+      trucking: [...template.trucking],
+      notes: "",
+    }
+
+    setJobData({
+      ...jobData,
+      sections: [...jobData.sections, newSection],
+      selectedSections: [...jobData.selectedSections, newSectionId],
+    })
+
+    // Auto-expand the new section
+    setExpandedSections({
+      ...expandedSections,
+      [newSectionId]: true,
+    })
+
+    setIsAddSectionDialogOpen(false)
+
+    toast({
+      title: "Section Added",
+      description: `${templateName} section has been added to your project.`,
+    })
+  }
+
+  // Function to duplicate a section
+  const duplicateSection = (sectionId: string) => {
+    const sectionToDuplicate = jobData.sections.find((section) => section.id === sectionId)
+    if (sectionToDuplicate) {
+      const newSectionId = `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+      // Create a deep copy to ensure all properties are properly duplicated
+      const duplicatedSection = JSON.parse(
+        JSON.stringify({
+          ...sectionToDuplicate,
+          id: newSectionId,
+          name: `${sectionToDuplicate.name} (Copy)`,
+        }),
+      )
+
+      setJobData({
+        ...jobData,
+        sections: [...jobData.sections, duplicatedSection],
+        selectedSections: [...jobData.selectedSections, newSectionId],
+      })
+
+      // Auto-expand the duplicated section
+      setExpandedSections({
+        ...expandedSections,
+        [newSectionId]: true,
+      })
+
+      toast({
+        title: "Section Duplicated",
+        description: `${sectionToDuplicate.name} has been duplicated.`,
+      })
     }
   }
 
-  const calculateItemTotal = (item) => {
-    const quantity = Number(item.quantity) || 0
-    const hours = Number(item.hours) || 0
-    const rate = Number(item.rate) || 0
-
-    // For equipment and trucking, we typically use daily rates (8 hours)
-    // if (
-    //   item.name &&
-    //   (item.name.includes("Paver") ||
-    //     item.name.includes("Roller") ||
-    //     item.name.includes("Skidsteer") ||
-    //     item.name.includes("Mill") ||
-    //     item.name.includes("Truck") ||
-    //     item.name.includes("Broom") ||
-    //     item.name.includes("Excavator") ||
-    //     item.name.includes("Dozer"))
-    // ) {
-    //   return quantity * (hours / 8) * rate // Convert hours to days for daily rate
-    // }
-
-    return quantity * hours * rate
+  // Function to rename a section
+  const startRenamingSection = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (section) {
+      setEditingSectionId(sectionId)
+      setEditingSectionName(section.name)
+    }
   }
 
-  const calculateMaterialTotal = (item) => {
-    const quantity = Number(item.quantity) || 0
-    const rate = Number(item.rate) || 0
-    return quantity * rate
+  const saveRenamedSection = () => {
+    if (editingSectionId && editingSectionName.trim()) {
+      setJobData({
+        ...jobData,
+        sections: jobData.sections.map((section) =>
+          section.id === editingSectionId ? { ...section, name: editingSectionName.trim() } : section,
+        ),
+      })
+      setEditingSectionId(null)
+      setEditingSectionName("")
+    }
   }
 
-  const handleSectionNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSectionName(e.target.value)
+  const cancelRenamingSection = () => {
+    setEditingSectionId(null)
+    setEditingSectionName("")
   }
 
-  const handleAreaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setArea(Number(e.target.value))
-  }
-
-  const handleDepthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDepth(Number(e.target.value))
-  }
-
-  const toggleSectionExpand = (sectionId: string) => {
+  // Function to toggle section expansion
+  const toggleSectionExpansion = (sectionId: string) => {
     setExpandedSections({
       ...expandedSections,
       [sectionId]: !expandedSections[sectionId],
     })
   }
 
-  const addSection = () => {
-    if (!sectionName || !area || !depth) {
-      alert("Please enter section name, area, and depth")
+  // Function to update section dimensions and recalculate area and tonnage
+  const updateSectionDimensions = (sectionId: string, field: string, value: number) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const updatedSection = { ...section, [field]: value }
+
+    // Calculate area if we have both length and width
+    if (field === "length" || field === "width") {
+      if (updatedSection.length && updatedSection.width) {
+        updatedSection.area = updatedSection.length * updatedSection.width
+
+        // Recalculate tonnage for all materials based on the new area
+        if (updatedSection.materials && updatedSection.materials.length > 0) {
+          let totalTons = 0
+          updatedSection.materials = updatedSection.materials.map((material) => {
+            if (material.unit === "tons" && material.thickness) {
+              const tons = calculateTonsFromArea(updatedSection.area, material.thickness)
+              totalTons += tons
+              return { ...material, quantity: tons, total: tons * material.rate }
+            }
+            return material
+          })
+          updatedSection.tons = totalTons
+        }
+      }
+    }
+
+    // Update the section
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? updatedSection : s)),
+    })
+  }
+
+  // Function to recalculate tonnage for a section
+  const recalculateTonnage = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.area) {
+      toast({
+        title: "Cannot Calculate Tonnage",
+        description: "Please enter section dimensions first to calculate area.",
+        variant: "destructive",
+      })
       return
     }
 
-    const tons = calculateTonsFromArea(area, depth)
+    let totalTons = 0
+    const updatedMaterials = section.materials.map((material) => {
+      if (material.unit === "tons" && material.thickness) {
+        const tons = calculateTonsFromArea(section.area, material.thickness)
+        totalTons += tons
+        return { ...material, quantity: tons, total: tons * material.rate }
+      }
+      return material
+    })
 
-    const newSection = {
-      id: `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: sectionName,
-      length: 0, // We don't have this from user input
-      width: 0, // We don't have this from user input
-      depth: depth,
-      area: area,
-      tons: tons,
-      equipment: [],
-      labor: [],
-      materials: [],
-      trucking: [],
+    const updatedSection = {
+      ...section,
+      materials: updatedMaterials,
+      tons: totalTons,
     }
 
     setJobData({
       ...jobData,
-      sections: [...jobData.sections, newSection],
-      selectedSections: [...jobData.selectedSections, newSection.id],
+      sections: jobData.sections.map((s) => (s.id === sectionId ? updatedSection : s)),
     })
 
-    // Auto-expand the new section
-    setExpandedSections({
-      ...expandedSections,
-      [newSection.id]: true,
+    toast({
+      title: "Tonnage Recalculated",
+      description: `Total tonnage for this section: ${totalTons.toFixed(2)} tons`,
     })
-
-    setSectionName("")
-    setArea(undefined)
-    setDepth(undefined)
   }
 
-  const removeSection = (sectionId: string) => {
-    // Also remove any markup for this section
-    const updatedMarkups = { ...jobData.markups }
-    delete updatedMarkups[sectionId]
+  // Function to update material item in a section
+  const updateMaterialItem = (sectionId: string, index: number, field: string, value: any) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.materials) return
 
+    const updatedMaterials = [...section.materials]
+    updatedMaterials[index] = { ...updatedMaterials[index], [field]: value }
+
+    // Calculate total for this material
+    if (field === "quantity" || field === "rate") {
+      updatedMaterials[index].total = updatedMaterials[index].quantity * updatedMaterials[index].rate
+    }
+
+    // Calculate total tonnage for the section
+    let totalTons = 0
+    updatedMaterials.forEach((material) => {
+      if (material.unit === "tons") {
+        totalTons += Number(material.quantity) || 0
+      }
+    })
+
+    // Update the section
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              materials: updatedMaterials,
+              tons: totalTons,
+            }
+          : s,
+      ),
+    })
+  }
+
+  // Function to add a material item to a section
+  const addMaterialItem = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const newMaterial = {
+      name: materialTypes.length > 0 ? materialTypes[0].name : "New Material",
+      unit: "tons",
+      quantity: 0,
+      thickness: 0,
+      rate: 85,
+      total: 0,
+    }
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId ? { ...s, materials: [...s.materials, newMaterial] } : s,
+      ),
+    })
+  }
+
+  // Function to remove a material item from a section
+  const removeMaterialItem = (sectionId: string, index: number) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.materials) return
+
+    const updatedMaterials = section.materials.filter((_, i) => i !== index)
+
+    // Recalculate total tonnage
+    let totalTons = 0
+    updatedMaterials.forEach((material) => {
+      if (material.unit === "tons") {
+        totalTons += Number(material.quantity) || 0
+      }
+    })
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              materials: updatedMaterials,
+              tons: totalTons,
+            }
+          : s,
+      ),
+    })
+  }
+
+  // Function to update equipment item in a section
+  const updateEquipmentItem = (sectionId: string, index: number, field: string, value: any) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.equipment) return
+
+    const updatedEquipment = [...section.equipment]
+    updatedEquipment[index] = { ...updatedEquipment[index], [field]: value }
+
+    // Calculate total for this equipment
+    if (field === "quantity" || field === "hours" || field === "rate") {
+      updatedEquipment[index].total =
+        updatedEquipment[index].quantity * updatedEquipment[index].hours * updatedEquipment[index].rate
+    }
+
+    // Update the section
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, equipment: updatedEquipment } : s)),
+    })
+  }
+
+  // Function to add an equipment item to a section
+  const addEquipmentItem = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const newEquipment = {
+      name: equipmentList.length > 0 ? equipmentList[0].name : "New Equipment",
+      quantity: 1,
+      hours: 8,
+      rate: equipmentList.length > 0 ? equipmentList[0].hourlyRate : 0,
+      total: equipmentList.length > 0 ? equipmentList[0].hourlyRate * 8 : 0,
+      includesOperator: false,
+    }
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId ? { ...s, equipment: [...s.equipment, newEquipment] } : s,
+      ),
+    })
+  }
+
+  // Function to remove an equipment item from a section
+  const removeEquipmentItem = (sectionId: string, index: number) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.equipment) return
+
+    const updatedEquipment = section.equipment.filter((_, i) => i !== index)
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, equipment: updatedEquipment } : s)),
+    })
+  }
+
+  // Function to update labor item in a section
+  const updateLaborItem = (sectionId: string, index: number, field: string, value: any) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.labor) return
+
+    const updatedLabor = [...section.labor]
+
+    // If selecting a crew member, update all related fields
+    if (field === "crewMemberId") {
+      const crewMember = getCrewMemberById(value)
+      if (crewMember) {
+        updatedLabor[index] = {
+          ...updatedLabor[index],
+          crewMemberId: value,
+          name: crewMember.name,
+          title: crewMember.title,
+          rate: crewMember.rate,
+          overtimeRate: crewMember.overtimeRate,
+        }
+      }
+    } else {
+      updatedLabor[index] = { ...updatedLabor[index], [field]: value }
+    }
+
+    // If setting the regular rate and overtime rate isn't set yet, default overtime rate to 1.5x regular
+    if (field === "rate" && !updatedLabor[index].overtimeRate) {
+      updatedLabor[index].overtimeRate = value * 1.5
+    }
+
+    // Calculate total for this labor including overtime
+    const regularHours = Math.min(updatedLabor[index].hours || 0, 8) // Cap regular hours at 8
+    const overtimeHours = Math.max((updatedLabor[index].hours || 0) - 8, 0) // Hours beyond 8 are overtime
+
+    const regularPay = updatedLabor[index].quantity * regularHours * updatedLabor[index].rate
+    const overtimePay =
+      updatedLabor[index].quantity *
+      overtimeHours *
+      (updatedLabor[index].overtimeRate || updatedLabor[index].rate * 1.5)
+
+    updatedLabor[index].overtimeHours = overtimeHours
+    updatedLabor[index].total = regularPay + overtimePay
+
+    // Update the section
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, labor: updatedLabor } : s)),
+    })
+  }
+
+  // Function to add a labor item to a section
+  const addLaborItem = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const newLabor = {
+      name: "Select Crew Member",
+      title: "Laborer",
+      crewMemberId: "",
+      quantity: 1,
+      hours: 8,
+      rate: 20,
+      overtimeHours: 0,
+      overtimeRate: 30, // 1.5x regular rate
+      total: 160,
+    }
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, labor: [...s.labor, newLabor] } : s)),
+    })
+  }
+
+  // Function to remove a labor item from a section
+  const removeLaborItem = (sectionId: string, index: number) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.labor) return
+
+    const updatedLabor = section.labor.filter((_, i) => i !== index)
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, labor: updatedLabor } : s)),
+    })
+  }
+
+  // Function to update trucking item in a section
+  const updateTruckingItem = (sectionId: string, index: number, field: string, value: any) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.trucking) return
+
+    const updatedTrucking = [...section.trucking]
+    updatedTrucking[index] = { ...updatedTrucking[index], [field]: value }
+
+    // Calculate total based on pricing type
+    if (field === "pricingType") {
+      // Reset fields based on pricing type
+      if (value === "per-hour") {
+        updatedTrucking[index] = {
+          ...updatedTrucking[index],
+          hours: 8,
+          tons: 0,
+          total: updatedTrucking[index].quantity * 8 * updatedTrucking[index].rate,
+        }
+      } else if (value === "per-ton") {
+        updatedTrucking[index] = {
+          ...updatedTrucking[index],
+          hours: 0,
+          tons: 100, // Default value
+          total: updatedTrucking[index].quantity * 100 * updatedTrucking[index].rate,
+        }
+      }
+    } else if (
+      (updatedTrucking[index].pricingType === "per-hour" &&
+        (field === "quantity" || field === "hours" || field === "rate")) ||
+      (updatedTrucking[index].pricingType === "per-ton" &&
+        (field === "quantity" || field === "tons" || field === "rate"))
+    ) {
+      // Calculate total based on pricing type
+      if (updatedTrucking[index].pricingType === "per-hour") {
+        updatedTrucking[index].total =
+          updatedTrucking[index].quantity * updatedTrucking[index].hours * updatedTrucking[index].rate
+      } else if (updatedTrucking[index].pricingType === "per-ton") {
+        updatedTrucking[index].total =
+          updatedTrucking[index].quantity * updatedTrucking[index].tons * updatedTrucking[index].rate
+      }
+    }
+
+    // Update the section
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, trucking: updatedTrucking } : s)),
+    })
+  }
+
+  // Function to add a trucking item to a section
+  const addTruckingItem = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const newTrucking = {
+      name: "Dump Truck",
+      function: truckingFunctions[0],
+      pricingType: "per-hour", // Default to hourly pricing
+      quantity: 1,
+      hours: 8,
+      tons: 0, // Not used for hourly pricing
+      rate: 95,
+      total: 760,
+    }
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId ? { ...s, trucking: [...s.trucking, newTrucking] } : s,
+      ),
+    })
+  }
+
+  // Function to remove a trucking item from a section
+  const removeTruckingItem = (sectionId: string, index: number) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.trucking) return
+
+    const updatedTrucking = section.trucking.filter((_, i) => i !== index)
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, trucking: updatedTrucking } : s)),
+    })
+  }
+
+  // Function to delete a section
+  const deleteSection = (sectionId: string) => {
     setJobData({
       ...jobData,
       sections: jobData.sections.filter((section) => section.id !== sectionId),
       selectedSections: jobData.selectedSections.filter((id) => id !== sectionId),
-      markups: updatedMarkups,
+    })
+
+    toast({
+      title: "Section Deleted",
+      description: "The section has been removed from your project.",
     })
   }
 
-  const handleSectionSelection = (sectionId: string) => {
+  // Function to toggle section selection
+  const toggleSectionSelection = (sectionId: string) => {
     if (jobData.selectedSections.includes(sectionId)) {
       setJobData({
         ...jobData,
@@ -399,1477 +643,1379 @@ function JobCostDashboard() {
     }
   }
 
-  const handleTemplateSelection = (templateName: string) => {
-    const newSection = createSectionFromTemplate(templateName)
-    if (newSection) {
-      setJobData({
-        ...jobData,
-        sections: [...jobData.sections, newSection],
-        selectedSections: [...jobData.selectedSections, newSection.id],
-      })
+  // Function to calculate section total
+  const calculateSectionTotal = (section) => {
+    const equipmentTotal = section.equipment.reduce((sum, item) => sum + (item.total || 0), 0)
+    const laborTotal = section.labor.reduce((sum, item) => sum + (item.total || 0), 0)
+    const materialsTotal = section.materials.reduce((sum, item) => sum + (item.total || 0), 0)
+    const truckingTotal = section.trucking.reduce((sum, item) => sum + (item.total || 0), 0)
 
-      // Auto-expand the new section
-      setExpandedSections({
-        ...expandedSections,
-        [newSection.id]: true,
-      })
-    }
+    return equipmentTotal + laborTotal + materialsTotal + truckingTotal
   }
 
-  const handleMobilizationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setJobData({
-      ...jobData,
-      mobilization: {
-        ...jobData.mobilization,
-        enabled: e.target.checked,
-      },
-    })
-  }
-
-  const handleSectionSpecificChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setJobData({
-      ...jobData,
-      mobilization: {
-        ...jobData.mobilization,
-        sectionSpecific: e.target.checked,
-      },
-    })
-  }
-
-  const handleNumTrucksChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setJobData({
-      ...jobData,
-      mobilization: {
-        ...jobData.mobilization,
-        numTrucks: Number.parseInt(e.target.value),
-      },
-    })
-  }
-
-  const handleTripTypeChange = (value: string) => {
-    setJobData({
-      ...jobData,
-      mobilization: {
-        ...jobData.mobilization,
-        tripType: value,
-      },
-    })
-  }
-
-  const handleSectionMobilizationChange = (sectionId: string, checked: boolean) => {
-    setJobData({
-      ...jobData,
-      mobilization: {
-        ...jobData.mobilization,
-        sectionMobilization: {
-          ...jobData.mobilization.sectionMobilization,
-          [sectionId]: checked,
-        },
-      },
-    })
-  }
-
-  // Handle markup percentage change for a section
-  const handleMarkupChange = (sectionId: string, value: string) => {
-    const markupValue = value === "" ? 0 : Number(value)
-
-    setJobData({
-      ...jobData,
-      markups: {
-        ...jobData.markups,
-        [sectionId]: markupValue,
-      },
-    })
-  }
-
-  const handleContactFormSubmit = (contactInfo: ContactInfo) => {
-    setContactInfo(contactInfo)
-    setIsContactFormOpen(false)
-    setIsQuotePreviewOpen(true)
-    toast({
-      title: "Contact information saved.",
-      description: "You can now preview the quote.",
-    })
-  }
-
-  const handleSaveQuote = (updatedJobData: any, updatedContactInfo: ContactInfo) => {
-    setJobData(updatedJobData)
-    setContactInfo(updatedContactInfo)
-    toast({
-      title: "Quote saved.",
-      description: "The quote has been successfully saved.",
-    })
-  }
-
-  const handleSelectAll = () => {
-    setJobData({
-      ...jobData,
-      selectedSections: jobData.sections.map((section) => section.id),
-    })
-  }
-
-  const handleDeselectAll = () => {
-    setJobData({
-      ...jobData,
-      selectedSections: [],
-    })
-  }
-
-  const handleSelectByType = (type: string) => {
-    const sectionsOfType = jobData.sections
-      .filter((section) => section.name.toLowerCase().includes(type.toLowerCase()))
-      .map((section) => section.id)
-
-    setJobData({
-      ...jobData,
-      selectedSections: [...new Set([...jobData.selectedSections, ...sectionsOfType])],
-    })
-  }
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setImportError(null)
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result as string
-        const parsedData = JSON.parse(content)
-
-        // Check if the data has the expected structure
-        if (parsedData.jobData) {
-          setJobData(parsedData.jobData)
-
-          // Restore other state if available
-          if (parsedData.contactInfo) setContactInfo(parsedData.contactInfo)
-          if (parsedData.quoteNumber) setQuoteNumber(parsedData.quoteNumber)
-          if (parsedData.expandedSections) setExpandedSections(parsedData.expandedSections)
-
-          setIsImportDialogOpen(false)
-          toast({
-            title: "Project imported successfully.",
-            description: "Your project has been imported and loaded.",
-          })
-        } else {
-          setImportError("Invalid project file format. The file does not contain the expected data structure.")
-        }
-      } catch (error) {
-        console.error("Error parsing JSON file:", error)
-        setImportError("Failed to parse JSON file. Please check the file format.")
-      }
-    }
-    reader.readAsText(file)
-
-    // Reset the input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
-  const handleNewJob = () => {
-    setJobData(defaultJobData)
-    toast({
-      title: "New job created.",
-      description: "You can now start a new job estimate.",
-    })
-  }
-
-  // Update equipment item
-  const updateEquipmentItem = (sectionId: string, index: number, field: string, value: any) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const equipment = [...updatedSections[sectionIndex].equipment]
-      equipment[index] = { ...equipment[index], [field]: value }
-
-      // If the name field is being updated, also update the rate from the equipment list
-      if (field === "name") {
-        const equipmentItem = equipmentList.find((e) => e.name === value)
-        if (equipmentItem) {
-          equipment[index].rate = equipmentItem.hourlyRate
-        }
-      }
-
-      // Calculate total
-      if (field === "quantity" || field === "hours" || field === "rate" || field === "name") {
-        const quantity = equipment[index].quantity || 0
-        const hours = equipment[index].hours || 0
-        const rate = equipment[index].rate || 0
-        equipment[index].total = quantity * hours * rate // Hourly rate
-      }
-
-      updatedSections[sectionIndex] = { ...updatedSections[sectionIndex], equipment }
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Update labor item
-  const updateLaborItem = (sectionId: string, index: number, field: string, value: any) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const labor = [...updatedSections[sectionIndex].labor]
-      labor[index] = { ...labor[index], [field]: value }
-
-      // Calculate total
-      if (field === "quantity" || field === "hours" || field === "rate") {
-        const quantity = labor[index].quantity || 0
-        const hours = labor[index].hours || 0
-        const rate = labor[index].rate || 0
-        labor[index].total = quantity * hours * rate
-      }
-
-      updatedSections[sectionIndex] = { ...updatedSections[sectionIndex], labor }
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Update material item
-  const updateMaterialItem = (sectionId: string, index: number, field: string, value: any) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const materials = [...updatedSections[sectionIndex].materials]
-      materials[index] = { ...materials[index], [field]: value }
-
-      // Calculate total
-      if (field === "quantity" || field === "rate") {
-        const quantity = materials[index].quantity || 0
-        const rate = materials[index].rate || 0
-        materials[index].total = quantity * rate
-      }
-
-      updatedSections[sectionIndex] = { ...updatedSections[sectionIndex], materials }
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Update trucking item
-  const updateTruckingItem = (sectionId: string, index: number, field: string, value: any) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const trucking = [...updatedSections[sectionIndex].trucking]
-      trucking[index] = { ...trucking[index], [field]: value }
-
-      // Calculate total
-      if (field === "quantity" || field === "hours" || field === "rate") {
-        const quantity = trucking[index].quantity || 0
-        const hours = trucking[index].hours || 0
-        const rate = trucking[index].rate || 0
-        trucking[index].total = quantity * hours * rate // Hourly rate
-      }
-
-      updatedSections[sectionIndex] = { ...updatedSections[sectionIndex], trucking }
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Add new equipment item
-  const addEquipmentItem = (sectionId: string) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const newItem = {
-        name: "AP2 CAT Paver AP1000F",
-        quantity: 1,
-        hours: 8,
-        rate: 575,
-        includesOperator: false,
-        total: 575 * 8, // 8 hours at hourly rate
-      }
-      updatedSections[sectionIndex].equipment.push(newItem)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Add new labor item
-  const addLaborItem = (sectionId: string) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const newItem = { name: "New Labor", quantity: 1, hours: 8, rate: 0, total: 0 }
-      updatedSections[sectionIndex].labor.push(newItem)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Add new material item
-  const addMaterialItem = (sectionId: string) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const newItem = { name: "New Material", unit: "tons", quantity: 0, rate: 0, total: 0 }
-      updatedSections[sectionIndex].materials.push(newItem)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Add new trucking item
-  const addTruckingItem = (sectionId: string) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      const newItem = { name: "New Trucking", quantity: 1, hours: 8, rate: 0, total: 0 }
-      updatedSections[sectionIndex].trucking.push(newItem)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Remove equipment item
-  const removeEquipmentItem = (sectionId: string, index: number) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      updatedSections[sectionIndex].equipment.splice(index, 1)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Remove labor item
-  const removeLaborItem = (sectionId: string, index: number) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      updatedSections[sectionIndex].labor.splice(index, 1)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Remove material item
-  const removeMaterialItem = (sectionId: string, index: number) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      updatedSections[sectionIndex].materials.splice(index, 1)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Remove trucking item
-  const removeTruckingItem = (sectionId: string, index: number) => {
-    const updatedSections = [...jobData.sections]
-    const sectionIndex = updatedSections.findIndex((s) => s.id === sectionId)
-
-    if (sectionIndex !== -1) {
-      updatedSections[sectionIndex].trucking.splice(index, 1)
-      setJobData({ ...jobData, sections: updatedSections })
-    }
-  }
-
-  // Calculate section total (without markup)
-  const calculateSectionBaseTotal = (section: any) => {
-    const equipmentTotal = section.equipment.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-    const laborTotal = section.labor.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-    const materialsTotal = section.materials.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-    const truckingTotal = section.trucking.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-
-    // Calculate mobilization cost if enabled
-    let mobilizationTotal = 0
-    if (
-      jobData.mobilization?.enabled &&
-      (!jobData.mobilization.sectionSpecific ||
-        (jobData.mobilization.sectionSpecific && jobData.mobilization.sectionMobilization[section.id]))
-    ) {
-      const mobilizationCost = 1020 // Base cost
-      mobilizationTotal = jobData.mobilization.sectionSpecific
-        ? mobilizationCost * jobData.mobilization.numTrucks * (jobData.mobilization.tripType === "round-trip" ? 2 : 1)
-        : (mobilizationCost *
-            jobData.mobilization.numTrucks *
-            (jobData.mobilization.tripType === "round-trip" ? 2 : 1)) /
-          jobData.sections.filter((s: any) => jobData.selectedSections.includes(s.id)).length
-    }
-
-    return equipmentTotal + laborTotal + materialsTotal + truckingTotal + mobilizationTotal
-  }
-
-  // Calculate section total (with markup)
-  const calculateSectionTotal = (section: any) => {
-    const baseTotal = calculateSectionBaseTotal(section)
-    const markup = jobData.markups[section.id] || 0
-    return baseTotal * (1 + markup / 100)
-  }
-
-  // Calculate job total (without markups for project summary)
-  const calculateJobTotalWithoutMarkup = () => {
-    return jobData.sections
-      .filter((section: any) => jobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => sum + calculateSectionBaseTotal(section), 0)
-  }
-
-  // Calculate job total (with markups for internal use)
+  // Function to calculate job total
   const calculateJobTotal = () => {
     return jobData.sections
-      .filter((section: any) => jobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => sum + calculateSectionTotal(section), 0)
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => sum + calculateSectionTotal(section), 0)
   }
 
-  // Get all materials from all sections
-  const getAllMaterials = () => {
-    const materials: any[] = []
+  // Function to calculate final quote amount with markup
+  const calculateFinalQuoteAmount = () => {
+    const equipmentTotal = jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + section.equipment.reduce((subSum, item) => subSum + (item.total || 0), 0)
+      }, 0)
+
+    const laborTotal = jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + section.labor.reduce((subSum, item) => subSum + (item.total || 0), 0)
+      }, 0)
+
+    const materialsTotal = jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + section.materials.reduce((subSum, item) => subSum + (item.total || 0), 0)
+      }, 0)
+
+    const truckingTotal = jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + section.trucking.reduce((subSum, item) => subSum + (item.total || 0), 0)
+      }, 0)
+
+    // Apply markup to each category
+    const equipmentWithMarkup = equipmentTotal * (1 + (jobData.markup?.equipment || 15) / 100)
+    const laborWithMarkup = laborTotal * (1 + (jobData.markup?.labor || 15) / 100)
+    const materialsWithMarkup = materialsTotal * (1 + (jobData.markup?.materials || 15) / 100)
+    const truckingWithMarkup = truckingTotal * (1 + (jobData.markup?.trucking || 15) / 100)
+
+    return equipmentWithMarkup + laborWithMarkup + materialsWithMarkup + truckingWithMarkup
+  }
+
+  // Function to save job data to localStorage
+  const saveJobData = () => {
+    try {
+      const dataToSave = JSON.stringify(jobData)
+      localStorage.setItem("jobData", dataToSave)
+      toast({
+        title: "Job Data Saved",
+        description: "Your job data has been saved locally.",
+      })
+    } catch (error) {
+      console.error("Error saving job data:", error)
+      toast({
+        title: "Error Saving Data",
+        description: "There was an error saving your job data.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to load job data from localStorage
+  const loadJobData = () => {
+    try {
+      const savedData = localStorage.getItem("jobData")
+      if (savedData) {
+        const parsedData = JSON.parse(savedData)
+        setJobData(parsedData)
+
+        // Also update expanded sections for any loaded sections
+        const newExpandedSections = {}
+        parsedData.sections.forEach((section) => {
+          newExpandedSections[section.id] = expandedSections[section.id] || false
+        })
+        setExpandedSections(newExpandedSections)
+
+        toast({
+          title: "Job Data Loaded",
+          description: "Your saved job data has been loaded.",
+        })
+      } else {
+        toast({
+          title: "No Saved Data",
+          description: "No previously saved job data was found.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error loading job data:", error)
+      toast({
+        title: "Error Loading Data",
+        description: "There was an error loading your job data.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to export job data as JSON file
+  const exportJobData = () => {
+    try {
+      const dataStr = JSON.stringify(jobData, null, 2)
+      const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr)
+
+      const exportFileDefaultName = `job-estimate-${jobData.quoteNumber}.json`
+
+      const linkElement = document.createElement("a")
+      linkElement.setAttribute("href", dataUri)
+      linkElement.setAttribute("download", exportFileDefaultName)
+      linkElement.click()
+
+      toast({
+        title: "Job Data Exported",
+        description: "Your job data has been exported as a JSON file.",
+      })
+    } catch (error) {
+      console.error("Error exporting job data:", error)
+      toast({
+        title: "Error Exporting Data",
+        description: "There was an error exporting your job data.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to import job data from JSON file
+  const importJobData = (event: ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const importedData = JSON.parse(e.target?.result as string)
+          setJobData(importedData)
+          toast({
+            title: "Job Data Imported",
+            description: "Your job data has been imported successfully.",
+          })
+        } catch (error) {
+          console.error("Error parsing imported data:", error)
+          toast({
+            title: "Invalid File Format",
+            description: "The selected file is not a valid job data file.",
+            variant: "destructive",
+          })
+        }
+      }
+      reader.readAsText(file)
+    } catch (error) {
+      console.error("Error importing job data:", error)
+      toast({
+        title: "Error Importing Data",
+        description: "There was an error importing your job data.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to reset form and create new estimate
+  const createNewEstimate = () => {
+    setJobData({
+      quoteNumber: generateQuoteNumber(),
+      date: new Date().toISOString().split("T")[0],
+      customerName: "",
+      projectName: "",
+      projectLocation: "",
+      contactInfo: {
+        preparedBy: "",
+        phone: "",
+        email: "",
+      },
+      sections: [],
+      selectedSections: [],
+      markup: {
+        equipment: 15,
+        labor: 15,
+        materials: 15,
+        trucking: 15,
+        overtime: 15,
+      },
+      notes: "",
+      totalArea: 0,
+      totalTonnage: 0,
+    })
+
+    toast({
+      title: "New Estimate Created",
+      description: "You can now start a fresh estimate.",
+    })
+  }
+
+  // Calculate total area and tonnage for the job
+  const calculateTotals = () => {
+    let totalArea = 0
+    let totalTonnage = 0
 
     jobData.sections.forEach((section) => {
       if (jobData.selectedSections.includes(section.id)) {
-        section.materials.forEach((material: any) => {
-          materials.push({
-            ...material,
-            sectionId: section.id,
-            sectionName: section.name,
-          })
-        })
+        totalArea += section.area || 0
+        totalTonnage += section.tons || 0
       }
     })
 
-    return materials
-  }
-
-  // Export to PDF
-  const handleExportPdf = () => {
-    const doc = new jsPDF()
-
-    // Add header
-    doc.setFontSize(20)
-    doc.text("Job Cost Estimate", 20, 20)
-
-    doc.setFontSize(12)
-    doc.text(`Project: ${jobData.projectName}`, 20, 30)
-    doc.text(`Location: ${jobData.location || "N/A"}`, 20, 40)
-    doc.text(`Date: ${jobData.date || new Date().toLocaleDateString()}`, 20, 50)
-    doc.text(`Total Area: ${jobData.totalArea?.toLocaleString() || "0"} sq ft`, 20, 60)
-    doc.text(`Total Tonnage: ${jobData.totalTonnage?.toLocaleString() || "0"} tons`, 20, 70)
-
-    // Add sections table
-    const sectionsTableData = jobData.sections
-      .filter((section) => jobData.selectedSections.includes(section.id))
-      .map((section) => [
-        section.name,
-        section.area?.toString() || "0",
-        section.tons?.toString() || "0",
-        `$${section.equipment.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${section.labor.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${section.materials.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${section.trucking.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${calculateSectionBaseTotal(section).toFixed(2)}`,
-      ])
-
-    autoTable(doc, {
-      startY: 80, // Adjusted to account for the new lines
-      head: [["Section", "Area (sq ft)", "Tons", "Equipment", "Labor", "Materials", "Trucking", "Total"]],
-      body: sectionsTableData,
-    })
-
-    // Add total
-    const finalY = (doc as any).lastAutoTable.finalY || 150
-    doc.text(`Total Job Cost: $${calculateJobTotalWithoutMarkup().toFixed(2)}`, 20, finalY + 10)
-
-    // Add notes if available
-    if (jobData.notes) {
-      doc.text("Notes:", 20, finalY + 20)
-      doc.text(jobData.notes, 20, finalY + 30)
+    if (totalArea !== jobData.totalArea || totalTonnage !== jobData.totalTonnage) {
+      setJobData({
+        ...jobData,
+        totalArea,
+        totalTonnage,
+      })
     }
-
-    // Save the PDF
-    doc.save(`${jobData.projectName.replace(/\s+/g, "_")}_estimate.pdf`)
-
-    toast({
-      title: "PDF exported successfully.",
-      description: "Your job estimate has been exported as a PDF file.",
-    })
   }
+
+  // Calculate totals whenever sections or selected sections change
+  React.useEffect(() => {
+    calculateTotals()
+  }, [jobData.sections, jobData.selectedSections])
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <img src="/NEW_Logo.jpg" alt="Spallina Materials" className="h-16 object-contain" />
-          <h1 className="text-2xl font-bold">Spallina Asphalt Estimator</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="default" className="bg-black hover:bg-gray-800" onClick={handleSaveConfig}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Project
-          </Button>
-          <Button variant="outline" onClick={() => setIsQuotePreviewOpen(true)}>
-            <FileText className="mr-2 h-4 w-4" />
-            Project Summary
-          </Button>
-          <div className="flex items-center gap-2">
-            <CSVExport jobData={jobData} />
-            <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import Project
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Import Project</DialogTitle>
-                </DialogHeader>
-                <div className="flex flex-col space-y-4 py-4">
-                  {importError && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{importError}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <Input type="file" accept=".json" onChange={handleFileUpload} ref={fileInputRef} />
-
-                  <p className="text-sm text-gray-500">
-                    Upload a JSON file to import a previously saved project. This will replace your current project
-                    data.
-                  </p>
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" onClick={() => setIsConfigOpen(true)}>
+    <div className="container mx-auto p-4 max-w-7xl">
+      <div className="flex flex-col space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Asphalt Job Estimator</h1>
+          <div className="flex space-x-2">
+            <Button variant="outline" onClick={() => setConfigDialogOpen(true)}>
               <Settings className="mr-2 h-4 w-4" />
               Config
             </Button>
           </div>
         </div>
-      </div>
 
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="projectName">Job Name</Label>
-              <Input
-                type="text"
-                id="projectName"
-                placeholder="Enter job name"
-                value={jobData.projectName}
-                onChange={(e) => setJobData({ ...jobData, projectName: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="location">Location</Label>
-              <Input
-                type="text"
-                id="location"
-                placeholder="Enter job location"
-                value={jobData.location}
-                onChange={(e) => setJobData({ ...jobData, location: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="date">Date</Label>
-              <Input
-                type="date"
-                id="date"
-                value={jobData.date}
-                onChange={(e) => setJobData({ ...jobData, date: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 border-t pt-4">
-            <h3 className="text-lg font-semibold mb-2">Prepared By</h3>
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Prepared By</CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="contactName">Name</Label>
+                <Label htmlFor="preparedBy">Name</Label>
                 <Input
-                  type="text"
-                  id="contactName"
-                  placeholder="Enter your name"
-                  value={jobData.contactInfo?.name || ""}
+                  id="preparedBy"
+                  value={jobData.contactInfo.preparedBy}
                   onChange={(e) =>
                     setJobData({
                       ...jobData,
-                      contactInfo: { ...jobData.contactInfo, name: e.target.value },
+                      contactInfo: {
+                        ...jobData.contactInfo,
+                        preparedBy: e.target.value,
+                      },
                     })
                   }
+                  placeholder="Your Name"
                 />
               </div>
               <div>
-                <Label htmlFor="contactPosition">Position</Label>
+                <Label htmlFor="phone">Phone</Label>
                 <Input
-                  type="text"
-                  id="contactPosition"
-                  placeholder="Enter your position"
-                  value={jobData.contactInfo?.position || ""}
+                  id="phone"
+                  value={jobData.contactInfo.phone}
                   onChange={(e) =>
                     setJobData({
                       ...jobData,
-                      contactInfo: { ...jobData.contactInfo, position: e.target.value },
+                      contactInfo: {
+                        ...jobData.contactInfo,
+                        phone: e.target.value,
+                      },
                     })
                   }
+                  placeholder="Phone Number"
                 />
               </div>
               <div>
-                <Label htmlFor="contactCompany">Company</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  type="text"
-                  id="contactCompany"
-                  placeholder="Enter your company"
-                  value={jobData.contactInfo?.company || ""}
+                  id="email"
+                  value={jobData.contactInfo.email}
                   onChange={(e) =>
                     setJobData({
                       ...jobData,
-                      contactInfo: { ...jobData.contactInfo, company: e.target.value },
+                      contactInfo: {
+                        ...jobData.contactInfo,
+                        email: e.target.value,
+                      },
                     })
                   }
-                />
-              </div>
-              <div>
-                <Label htmlFor="contactPhone">Phone</Label>
-                <Input
-                  type="text"
-                  id="contactPhone"
-                  placeholder="Enter your phone"
-                  value={jobData.contactInfo?.phone || ""}
-                  onChange={(e) =>
-                    setJobData({
-                      ...jobData,
-                      contactInfo: { ...jobData.contactInfo, phone: e.target.value },
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="contactEmail">Email</Label>
-                <Input
-                  type="email"
-                  id="contactEmail"
-                  placeholder="Enter your email"
-                  value={jobData.contactInfo?.email || ""}
-                  onChange={(e) =>
-                    setJobData({
-                      ...jobData,
-                      contactInfo: { ...jobData.contactInfo, email: e.target.value },
-                    })
-                  }
+                  placeholder="Email Address"
                 />
               </div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div>
-              <Label htmlFor="totalArea">Total Area (sq ft)</Label>
-              <Input
-                type="number"
-                id="totalArea"
-                placeholder="Enter total area"
-                value={jobData.totalArea || ""}
-                onChange={(e) => setJobData({ ...jobData, totalArea: Number(e.target.value) })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="totalTonnage">Total Tonnage</Label>
-              <Input
-                type="number"
-                id="totalTonnage"
-                placeholder="Enter total tonnage"
-                value={jobData.totalTonnage || ""}
-                onChange={(e) => setJobData({ ...jobData, totalTonnage: Number(e.target.value) })}
-              />
-            </div>
-          </div>
-          <div className="mt-4">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              placeholder="Enter any additional notes about the job"
-              value={jobData.notes || ""}
-              onChange={(e) => setJobData({ ...jobData, notes: e.target.value })}
-              rows={3}
-            />
-          </div>
-        </CardContent>
-      </Card>
+        <Tabs defaultValue="job-info" value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid grid-cols-3">
+            <TabsTrigger value="job-info">Job Information</TabsTrigger>
+            <TabsTrigger value="sections">Sections</TabsTrigger>
+            <TabsTrigger value="equipment">Equipment & Materials</TabsTrigger>
+          </TabsList>
 
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <h2 className="text-lg font-semibold mb-4">Quick Section Selection</h2>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={handleSelectAll}>
-              Select All
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDeselectAll}>
-              Deselect All
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleSelectByType("milling")}>
-              Milling Only
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleSelectByType("paving")}>
-              Paving Only
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleSaveConfig}>
-              Save Config
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleLoadConfig}>
-              Load Config
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleNewJob}>
-              New Job
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          <TabsContent value="job-info" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Job Information</CardTitle>
+                <CardDescription>Enter the basic information about the job</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="quoteNumber">Quote Number</Label>
+                    <Input
+                      id="quoteNumber"
+                      value={jobData.quoteNumber}
+                      onChange={(e) => setJobData({ ...jobData, quoteNumber: e.target.value })}
+                      placeholder="Quote Number"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="date">Date</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={jobData.date}
+                      onChange={(e) => setJobData({ ...jobData, date: e.target.value })}
+                    />
+                  </div>
+                </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 w-full mb-4">
-          <TabsTrigger value="sections">Job Sections</TabsTrigger>
-          <TabsTrigger value="materials">Materials</TabsTrigger>
-          <TabsTrigger value="equipment">Equipment</TabsTrigger>
-        </TabsList>
+                <div>
+                  <Label htmlFor="customerName">Customer Name</Label>
+                  <Input
+                    id="customerName"
+                    value={jobData.customerName}
+                    onChange={(e) => setJobData({ ...jobData, customerName: e.target.value })}
+                    placeholder="Customer Name"
+                  />
+                </div>
 
-        <TabsContent value="sections" className="space-y-4">
-          {jobData.sections.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">No sections added yet. Add a section to get started.</p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {pavingTypes.map((type) => (
-                  <Button key={type} variant="outline" onClick={() => handleTemplateSelection(type)}>
-                    Add {type}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            jobData.sections.map((section) => (
-              <Card
-                key={section.id}
-                className={`border ${jobData.selectedSections.includes(section.id) ? "border-black" : "border-gray-200"}`}
-              >
-                <CardContent className="p-0">
-                  <div
-                    className="flex items-center justify-between p-4 cursor-pointer"
-                    onClick={() => toggleSectionExpand(section.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center font-medium">
-                        {jobData.sections.indexOf(section) + 1}
-                      </div>
-                      <h3 className="font-medium">{section.name}</h3>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">${calculateSectionBaseTotal(section).toFixed(2)}</span>
-                        {jobData.markups[section.id] > 0 && (
-                          <span className="text-red-500 font-medium">
-                            (+{jobData.markups[section.id]}% = ${calculateSectionTotal(section).toFixed(2)})
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        variant={jobData.selectedSections.includes(section.id) ? "default" : "outline"}
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleSectionSelection(section.id)
-                        }}
-                      >
-                        {jobData.selectedSections.includes(section.id) ? "Selected" : "Select"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          removeSection(section.id)
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      {expandedSections[section.id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                    </div>
+                <div>
+                  <Label htmlFor="projectName">Project Name</Label>
+                  <Input
+                    id="projectName"
+                    value={jobData.projectName}
+                    onChange={(e) => setJobData({ ...jobData, projectName: e.target.value })}
+                    placeholder="Project Name"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="projectLocation">Project Location</Label>
+                  <Input
+                    id="projectLocation"
+                    value={jobData.projectLocation}
+                    onChange={(e) => setJobData({ ...jobData, projectLocation: e.target.value })}
+                    placeholder="Project Location"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="totalArea">Total Area (sq ft)</Label>
+                    <Input
+                      id="totalArea"
+                      type="number"
+                      min="0"
+                      value={jobData.totalArea || ""}
+                      onChange={(e) => setJobData({ ...jobData, totalArea: Number(e.target.value) || 0 })}
+                      placeholder="Total Area"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="totalTonnage">Total Tonnage</Label>
+                    <Input
+                      id="totalTonnage"
+                      type="number"
+                      min="0"
+                      value={jobData.totalTonnage || ""}
+                      onChange={(e) => setJobData({ ...jobData, totalTonnage: Number(e.target.value) || 0 })}
+                      placeholder="Total Tonnage"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="markupPercentage">Markup Percentage</Label>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      id="markupPercentage"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={jobData.markup.equipment}
+                      onChange={(e) =>
+                        setJobData({
+                          ...jobData,
+                          markup: {
+                            ...jobData.markup,
+                            equipment: Number.parseFloat(e.target.value) || 0,
+                          },
+                        })
+                      }
+                      className="w-24"
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={jobData.notes}
+                    onChange={(e) => setJobData({ ...jobData, notes: e.target.value })}
+                    placeholder="Additional notes about the job"
+                    rows={4}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Project Summary</CardTitle>
+                <CardDescription>View the summary of your estimate</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium">Quote Amount:</p>
+                    <p className="text-2xl font-bold">${calculateFinalQuoteAmount().toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Internal note: Includes {jobData.markup.equipment}% markup on base cost of $
+                      {calculateJobTotal().toFixed(2)}
+                    </p>
                   </div>
 
-                  {expandedSections[section.id] && (
-                    <div className="border-t p-4">
-                      <div className="mb-4 flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                          <div>
-                            <Label htmlFor={`markup-${section.id}`} className="text-red-500 font-medium">
-                              Markup %
-                            </Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => setShowQuotePreview(true)}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Project Summary
+                    </Button>
+                    <Button variant="outline" onClick={saveJobData}>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button variant="outline" onClick={loadJobData}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Load
+                    </Button>
+                    <Button variant="outline" onClick={exportJobData}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export
+                    </Button>
+                    <label htmlFor="import-json">
+                      <Button variant="outline" onClick={() => document.getElementById("import-json")?.click()} asChild>
+                        <div>
+                          <FileUp className="mr-2 h-4 w-4" />
+                          Import
+                        </div>
+                      </Button>
+                    </label>
+                    <input id="import-json" type="file" accept=".json" onChange={importJobData} className="hidden" />
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive">
+                          <FileDown className="mr-2 h-4 w-4" />
+                          New Estimate
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Create New Estimate?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will clear all current data. Make sure you've saved your work if needed.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={createNewEstimate}>Continue</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="sections" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Job Sections</h2>
+              <Button onClick={() => setIsAddSectionDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Section
+              </Button>
+            </div>
+
+            {/* Section Template Selection Dialog */}
+            <Dialog open={isAddSectionDialogOpen} onOpenChange={setIsAddSectionDialogOpen}>
+              <DialogContent className="sm:max-w-[800px]">
+                <DialogHeader>
+                  <DialogTitle>Select Section Type</DialogTitle>
+                  <DialogDescription>
+                    Choose a section type to add to your project. Each type comes with pre-configured equipment, labor,
+                    materials, and trucking.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
+                  {pavingTypes.map((type) => (
+                    <Card
+                      key={type}
+                      className="cursor-pointer hover:bg-muted transition-colors"
+                      onClick={() => addSectionFromTemplate(type)}
+                    >
+                      <CardHeader className="p-4">
+                        <CardTitle className="text-lg">{type}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-4 pt-0">
+                        <p className="text-sm text-muted-foreground">
+                          Pre-configured {type.toLowerCase()} section with default values.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {jobData.sections.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center p-6">
+                  <p className="text-center text-muted-foreground mb-4">
+                    No sections added yet. Click the "Add Section" button to get started.
+                  </p>
+                  <Button onClick={() => setIsAddSectionDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Section
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              jobData.sections.map((section) => (
+                <Card key={section.id} className="overflow-hidden">
+                  <CardHeader className="bg-muted/50 py-3">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`select-${section.id}`}
+                          checked={jobData.selectedSections.includes(section.id)}
+                          onChange={() => toggleSectionSelection(section.id)}
+                          className="h-4 w-4"
+                        />
+                        {editingSectionId === section.id ? (
+                          <div className="flex items-center space-x-2">
                             <Input
-                              id={`markup-${section.id}`}
+                              value={editingSectionName}
+                              onChange={(e) => setEditingSectionName(e.target.value)}
+                              className="w-64"
+                              autoFocus
+                            />
+                            <Button size="sm" variant="ghost" onClick={saveRenamedSection}>
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={cancelRenamingSection}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center">
+                            <CardTitle className="text-lg">{section.name}</CardTitle>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startRenamingSection(section.id)}
+                              className="ml-2"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggleSectionExpansion(section.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {expandedSections[section.id] ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => duplicateSection(section.id)}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" variant="destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Section?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete this section and all its data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction asChild>
+                                <Button onClick={() => deleteSection(section.id)} variant="destructive">
+                                  Delete
+                                </Button>
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  {expandedSections[section.id] && (
+                    <CardContent className="p-6 space-y-6">
+                      {/* Section Dimensions */}
+                      <div className="border rounded-md p-4">
+                        <h3 className="text-lg font-medium mb-4">Section Dimensions</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <Label htmlFor={`length-${section.id}`}>Length (ft)</Label>
+                            <Input
+                              id={`length-${section.id}`}
                               type="number"
                               min="0"
-                              max="100"
-                              className="w-24 text-red-500"
-                              value={jobData.markups[section.id] || ""}
-                              onChange={(e) => handleMarkupChange(section.id, e.target.value)}
+                              step="0.1"
+                              value={section.length || ""}
+                              onChange={(e) => {
+                                const value = Number.parseFloat(e.target.value) || 0
+                                updateSectionDimensions(section.id, "length", value)
+                              }}
                             />
                           </div>
+                          <div>
+                            <Label htmlFor={`width-${section.id}`}>Width (ft)</Label>
+                            <Input
+                              id={`width-${section.id}`}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={section.width || ""}
+                              onChange={(e) => {
+                                const value = Number.parseFloat(e.target.value) || 0
+                                updateSectionDimensions(section.id, "width", value)
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`area-${section.id}`}>Area (sq ft)</Label>
+                            <div className="flex items-center space-x-2">
+                              <Input
+                                id={`area-${section.id}`}
+                                type="number"
+                                min="0"
+                                value={section.area || ""}
+                                onChange={(e) => {
+                                  const value = Number.parseFloat(e.target.value) || 0
+                                  // Update area directly
+                                  const updatedSection = { ...section, area: value }
+                                  setJobData({
+                                    ...jobData,
+                                    sections: jobData.sections.map((s) => (s.id === section.id ? updatedSection : s)),
+                                  })
+                                }}
+                                className="flex-1"
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => {
+                                  if (section.length && section.width) {
+                                    const area = section.length * section.width
+                                    const updatedSection = { ...section, area }
+                                    setJobData({
+                                      ...jobData,
+                                      sections: jobData.sections.map((s) => (s.id === section.id ? updatedSection : s)),
+                                    })
+                                  }
+                                }}
+                                title="Calculate from length and width"
+                              >
+                                <Calculator className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="italic text-gray-500">
-                          <p>
-                            Job Total: {jobData.totalArea.toLocaleString()} sq ft /{" "}
-                            {jobData.totalTonnage.toLocaleString()} tons
-                          </p>
-                        </div>
+
+                        {/* Area and Tonnage Display */}
+                        {section.area > 0 && (
+                          <div className="mt-4 grid grid-cols-2 gap-4 bg-blue-50 p-3 rounded-md">
+                            <div>
+                              <p className="text-sm font-medium">Total Area:</p>
+                              <p className="text-lg">{section.area.toFixed(2)} sq ft</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Total Tonnage:</p>
+                              <p className="text-lg">{section.tons?.toFixed(2) || "0.00"} tons</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      <Tabs defaultValue="equipment">
-                        <TabsList>
-                          <TabsTrigger value="equipment">Equipment</TabsTrigger>
-                          <TabsTrigger value="labor">Labor</TabsTrigger>
-                          <TabsTrigger value="materials">Materials</TabsTrigger>
-                          <TabsTrigger value="trucking">Trucking</TabsTrigger>
-                        </TabsList>
+                      {/* Materials Section */}
+                      <div className="border rounded-md p-4">
+                        <SectionMaterials
+                          sectionId={section.id}
+                          sectionArea={section.area || 0}
+                          materials={section.materials || []}
+                          updateMaterialItem={updateMaterialItem}
+                          addMaterialItem={addMaterialItem}
+                          removeMaterialItem={removeMaterialItem}
+                          recalculateTonnage={recalculateTonnage}
+                        />
+                      </div>
 
-                        {/* Equipment Tab */}
-                        <TabsContent value="equipment">
-                          <div className="mb-4 flex justify-between items-center">
-                            <h3 className="text-lg font-medium">Equipment</h3>
-                            <Button size="sm" onClick={() => addEquipmentItem(section.id)}>
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Equipment
-                            </Button>
-                          </div>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Quantity</TableHead>
-                                <TableHead>Hours</TableHead>
-                                <TableHead>Rate</TableHead>
-                                <TableHead>Includes Operator</TableHead>
-                                <TableHead>Total</TableHead>
-                                <TableHead>Actions</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {section.equipment.map((item: any, index: number) => (
-                                <TableRow key={`equipment-${section.id}-${index}`}>
-                                  <TableCell>
-                                    <Select
-                                      value={item.name}
-                                      onValueChange={(value) => updateEquipmentItem(section.id, index, "name", value)}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select Equipment" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {equipmentList.map((equipment) => (
-                                          <SelectItem key={equipment.name} value={equipment.name}>
-                                            {equipment.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.quantity}
-                                      onChange={(e) =>
-                                        updateEquipmentItem(section.id, index, "quantity", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.hours}
-                                      onChange={(e) =>
-                                        updateEquipmentItem(section.id, index, "hours", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.rate || 0}
-                                      onChange={(e) =>
-                                        updateEquipmentItem(section.id, index, "rate", Number(e.target.value))
-                                      }
-                                      readOnly
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Checkbox
-                                      checked={item.includesOperator}
-                                      onCheckedChange={(checked) =>
-                                        updateEquipmentItem(section.id, index, "includesOperator", !!checked)
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      variant="destructive"
-                                      size="icon"
-                                      onClick={() => removeEquipmentItem(section.id, index)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TabsContent>
+                      {/* Equipment Section */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-medium">Equipment</h3>
+                          <Button size="sm" onClick={() => addEquipmentItem(section.id)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Equipment
+                          </Button>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Equipment</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Hours</TableHead>
+                              <TableHead>Rate</TableHead>
+                              <TableHead>Includes Operator</TableHead>
+                              <TableHead>Total</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {section.equipment.map((item, index) => (
+                              <TableRow key={`equipment-${section.id}-${index}`}>
+                                <TableCell>
+                                  <Select
+                                    value={item.name}
+                                    onValueChange={(value) => {
+                                      const selectedEquipment = equipmentList.find((e) => e.name === value)
+                                      if (selectedEquipment) {
+                                        // Create a temporary updated item to ensure all changes are applied at once
+                                        const updatedItem = {
+                                          ...item,
+                                          name: value,
+                                          rate: selectedEquipment.hourlyRate,
+                                          total: item.quantity * item.hours * selectedEquipment.hourlyRate,
+                                        }
 
-                        {/* Labor Tab */}
-                        <TabsContent value="labor">
-                          <div className="mb-4 flex justify-between items-center">
-                            <h3 className="text-lg font-medium">Labor</h3>
-                            <Button size="sm" onClick={() => addLaborItem(section.id)}>
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Labor
-                            </Button>
-                          </div>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Quantity</TableHead>
-                                <TableHead>Hours</TableHead>
-                                <TableHead>Rate</TableHead>
-                                <TableHead>Total</TableHead>
-                                <TableHead>Actions</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {section.labor.map((item: any, index: number) => (
-                                <TableRow key={`labor-${section.id}-${index}`}>
-                                  <TableCell>
-                                    <Input
-                                      value={item.name}
-                                      onChange={(e) => updateLaborItem(section.id, index, "name", e.target.value)}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.quantity}
-                                      onChange={(e) =>
-                                        updateLaborItem(section.id, index, "quantity", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.hours}
-                                      onChange={(e) =>
-                                        updateLaborItem(section.id, index, "hours", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.rate || 0}
-                                      onChange={(e) =>
-                                        updateLaborItem(section.id, index, "rate", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      variant="destructive"
-                                      size="icon"
-                                      onClick={() => removeLaborItem(section.id, index)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TabsContent>
+                                        // Update the entire equipment item at once
+                                        const updatedEquipment = [...section.equipment]
+                                        updatedEquipment[index] = updatedItem
 
-                        {/* Materials Tab */}
-                        <TabsContent value="materials">
-                          <div className="mb-4 flex justify-between items-center">
-                            <h3 className="text-lg font-medium">Materials</h3>
-                            <Button size="sm" onClick={() => addMaterialItem(section.id)}>
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Material
-                            </Button>
-                          </div>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Unit</TableHead>
-                                <TableHead>Quantity</TableHead>
-                                <TableHead>Rate</TableHead>
-                                <TableHead>Total</TableHead>
-                                <TableHead>Actions</TableHead>
+                                        setJobData({
+                                          ...jobData,
+                                          sections: jobData.sections.map((s) =>
+                                            s.id === section.id ? { ...s, equipment: updatedEquipment } : s,
+                                          ),
+                                        })
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-[200px]">
+                                      <SelectValue placeholder="Select Equipment" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {equipmentList.map((equipment) => (
+                                        <SelectItem key={equipment.name} value={equipment.name}>
+                                          {equipment.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      updateEquipmentItem(section.id, index, "quantity", Number(e.target.value))
+                                    }
+                                    className="w-20"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.hours}
+                                    onChange={(e) =>
+                                      updateEquipmentItem(section.id, index, "hours", Number(e.target.value))
+                                    }
+                                    className="w-20"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.rate}
+                                    onChange={(e) =>
+                                      updateEquipmentItem(section.id, index, "rate", Number(e.target.value))
+                                    }
+                                    className="w-24"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <input
+                                    type="checkbox"
+                                    checked={item.includesOperator}
+                                    onChange={(e) =>
+                                      updateEquipmentItem(section.id, index, "includesOperator", e.target.checked)
+                                    }
+                                    className="h-4 w-4"
+                                  />
+                                </TableCell>
+                                <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    onClick={() => removeEquipmentItem(section.id, index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
                               </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {section.materials.map((item: any, index: number) => (
-                                <TableRow key={`material-${section.id}-${index}`}>
-                                  <TableCell>
-                                    <Input
-                                      value={item.name}
-                                      onChange={(e) => updateMaterialItem(section.id, index, "name", e.target.value)}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Select
-                                      value={item.unit}
-                                      onChange={(value) => updateMaterialItem(section.id, index, "unit", value)}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Unit" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="tons">Tons</SelectItem>
-                                        <SelectItem value="yards">Cubic Yards</SelectItem>
-                                        <SelectItem value="gallons">Gallons</SelectItem>
-                                        <SelectItem value="lbs">Pounds</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.quantity}
-                                      onChange={(e) =>
-                                        updateMaterialItem(section.id, index, "quantity", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.rate}
-                                      onChange={(e) =>
-                                        updateMaterialItem(section.id, index, "rate", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      variant="destructive"
-                                      size="icon"
-                                      onClick={() => removeMaterialItem(section.id, index)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TabsContent>
+                            ))}
+                            {section.equipment.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={7} className="text-center py-4 text-gray-500">
+                                  No equipment added yet. Click "Add Equipment" to add one.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
 
-                        {/* Trucking Tab */}
-                        <TabsContent value="trucking">
-                          <div className="mb-4 flex justify-between items-center">
-                            <h3 className="text-lg font-medium">Trucking</h3>
-                            <Button size="sm" onClick={() => addTruckingItem(section.id)}>
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Trucking
-                            </Button>
-                          </div>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Quantity</TableHead>
-                                <TableHead>Hours</TableHead>
-                                <TableHead>Rate</TableHead>
-                                <TableHead>Total</TableHead>
-                                <TableHead>Actions</TableHead>
+                      {/* Labor Section */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-medium">Labor</h3>
+                          <Button size="sm" onClick={() => addLaborItem(section.id)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Labor
+                          </Button>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Role</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Reg. Hours</TableHead>
+                              <TableHead>Rate</TableHead>
+                              <TableHead>OT Hours</TableHead>
+                              <TableHead>OT Rate</TableHead>
+                              <TableHead>Total</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {section.labor.map((item, index) => (
+                              <TableRow key={`labor-${section.id}-${index}`}>
+                                <TableCell>
+                                  <Select
+                                    value={item.crewMemberId || ""}
+                                    onValueChange={(value) => updateLaborItem(section.id, index, "crewMemberId", value)}
+                                  >
+                                    <SelectTrigger className="w-[180px]">
+                                      <SelectValue placeholder="Select Crew Member" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="custom">Custom Entry</SelectItem>
+                                      {crewMembers.map((member) => (
+                                        <SelectItem key={member.id} value={member.id}>
+                                          {member.name} ({member.title})
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      updateLaborItem(section.id, index, "quantity", Number(e.target.value))
+                                    }
+                                    className="w-16"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.hours}
+                                    onChange={(e) => {
+                                      const hours = Number(e.target.value)
+                                      updateLaborItem(section.id, index, "hours", hours)
+                                    }}
+                                    className="w-16"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.rate}
+                                    onChange={(e) => updateLaborItem(section.id, index, "rate", Number(e.target.value))}
+                                    className="w-20"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  {item.hours > 8 ? (
+                                    <span className="text-orange-500 font-medium">{item.hours - 8}</span>
+                                  ) : (
+                                    <span>0</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.overtimeRate || item.rate * 1.5}
+                                    onChange={(e) =>
+                                      updateLaborItem(section.id, index, "overtimeRate", Number(e.target.value))
+                                    }
+                                    className="w-20"
+                                  />
+                                </TableCell>
+                                <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    onClick={() => removeLaborItem(section.id, index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
                               </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {section.trucking.map((item: any, index: number) => (
-                                <TableRow key={`trucking-${section.id}-${index}`}>
-                                  <TableCell>
-                                    <Input
-                                      value={item.name}
-                                      onChange={(e) => updateTruckingItem(section.id, index, "name", e.target.value)}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={item.quantity}
-                                      onChange={(e) =>
-                                        updateTruckingItem(section.id, index, "quantity", Number(e.target.value))
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>
+                            ))}
+                            {section.labor.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={8} className="text-center py-4 text-gray-500">
+                                  No labor added yet. Click "Add Labor" to add one.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Trucking Section */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-medium">Trucking</h3>
+                          <Button size="sm" onClick={() => addTruckingItem(section.id)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Trucking
+                          </Button>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Function</TableHead>
+                              <TableHead>Pricing</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Rate</TableHead>
+                              <TableHead>Hours/Tons</TableHead>
+                              <TableHead>Total</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {section.trucking.map((item, index) => (
+                              <TableRow key={`trucking-${section.id}-${index}`}>
+                                <TableCell>
+                                  <Select
+                                    value={item.name}
+                                    onValueChange={(value) => updateTruckingItem(section.id, index, "name", value)}
+                                  >
+                                    <SelectTrigger className="w-[150px]">
+                                      <SelectValue placeholder="Select Type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Dump Truck">Dump Truck</SelectItem>
+                                      <SelectItem value="Flowboy">Flowboy</SelectItem>
+                                      <SelectItem value="Concrete Truck">Concrete Truck</SelectItem>
+                                      <SelectItem value="Water Truck">Water Truck</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={item.function || truckingFunctions[0]}
+                                    onValueChange={(value) => updateTruckingItem(section.id, index, "function", value)}
+                                  >
+                                    <SelectTrigger className="w-[150px]">
+                                      <SelectValue placeholder="Select Function" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {truckingFunctions.map((func) => (
+                                        <SelectItem key={func} value={func}>
+                                          {func}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={item.pricingType || "per-hour"}
+                                    onValueChange={(value) =>
+                                      updateTruckingItem(section.id, index, "pricingType", value)
+                                    }
+                                  >
+                                    <SelectTrigger className="w-[120px]">
+                                      <SelectValue placeholder="Pricing Type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="per-hour">Per Hour</SelectItem>
+                                      <SelectItem value="per-ton">Per Ton</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      updateTruckingItem(section.id, index, "quantity", Number(e.target.value))
+                                    }
+                                    className="w-20"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={item.rate}
+                                    onChange={(e) =>
+                                      updateTruckingItem(section.id, index, "rate", Number(e.target.value))
+                                    }
+                                    className="w-20"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  {item.pricingType === "per-hour" ? (
                                     <Input
                                       type="number"
                                       value={item.hours}
                                       onChange={(e) =>
                                         updateTruckingItem(section.id, index, "hours", Number(e.target.value))
                                       }
+                                      className="w-20"
                                     />
-                                  </TableCell>
-                                  <TableCell>
+                                  ) : (
                                     <Input
                                       type="number"
-                                      value={item.rate || 0}
+                                      value={item.tons}
                                       onChange={(e) =>
-                                        updateTruckingItem(section.id, index, "rate", Number(e.target.value))
+                                        updateTruckingItem(section.id, index, "tons", Number(e.target.value))
                                       }
+                                      className="w-20"
                                     />
-                                  </TableCell>
-                                  <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      variant="destructive"
-                                      size="icon"
-                                      onClick={() => removeTruckingItem(section.id, index)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TabsContent>
-                      </Tabs>
-
-                      <div className="mt-4 p-4 bg-gray-100 rounded-md">
-                        <div className="flex justify-between items-center">
-                          <span className="text-lg font-medium">Section Total:</span>
-                          <div>
-                            <span className="text-lg font-bold">${calculateSectionBaseTotal(section).toFixed(2)}</span>
-                            {jobData.markups[section.id] > 0 && (
-                              <span className="text-red-500 ml-2 font-medium">
-                                (+{jobData.markups[section.id]}% = ${calculateSectionTotal(section).toFixed(2)})
-                              </span>
+                                  )}
+                                </TableCell>
+                                <TableCell>${item.total?.toFixed(2) || "0.00"}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    onClick={() => removeTruckingItem(section.id, index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {section.trucking.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={8} className="text-center py-4 text-gray-500">
+                                  No trucking added yet. Click "Add Trucking" to add one.
+                                </TableCell>
+                              </TableRow>
                             )}
-                          </div>
-                        </div>
+                          </TableBody>
+                        </Table>
                       </div>
-                    </div>
+
+                      <div>
+                        <Label htmlFor={`notes-${section.id}`}>Section Notes</Label>
+                        <Textarea
+                          id={`notes-${section.id}`}
+                          value={section.notes || ""}
+                          onChange={(e) => {
+                            const updatedSection = { ...section, notes: e.target.value }
+                            setJobData({
+                              ...jobData,
+                              sections: jobData.sections.map((s) => (s.id === section.id ? updatedSection : s)),
+                            })
+                          }}
+                          placeholder="Additional notes about this section"
+                          rows={3}
+                        />
+                      </div>
+                    </CardContent>
                   )}
-                </CardContent>
-              </Card>
-            ))
-          )}
 
-          <div className="flex justify-center mt-6">
-            <div className="dropdown">
-              <Button variant="outline">Add Section</Button>
-              <div className="dropdown-content">
-                {pavingTypes.map((type) => (
-                  <Button
-                    key={type}
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => handleTemplateSelection(type)}
-                  >
-                    {type}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="materials">
-          <Card>
-            <CardHeader>
-              <CardTitle>All Materials</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Section</TableHead>
-                    <TableHead>Material</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Rate</TableHead>
-                    <TableHead>Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {getAllMaterials().map((material, index) => (
-                    <TableRow key={`all-material-${index}`}>
-                      <TableCell>{material.sectionName}</TableCell>
-                      <TableCell>{material.name}</TableCell>
-                      <TableCell>{material.unit}</TableCell>
-                      <TableCell>{material.quantity}</TableCell>
-                      <TableCell>${material.rate?.toFixed(2) || "0.00"}</TableCell>
-                      <TableCell>${material.total?.toFixed(2) || "0.00"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              {getAllMaterials().length === 0 && (
-                <div className="text-center py-4 text-gray-500">No materials added to any sections yet.</div>
-              )}
-
-              <div className="mt-4 p-4 bg-gray-100 rounded-md">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-medium">Total Materials Cost:</span>
-                  <span className="text-lg font-bold">
-                    $
-                    {getAllMaterials()
-                      .reduce((sum, material) => sum + (material.total || 0), 0)
-                      .toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="equipment" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Equipment Costs Management</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <p className="text-sm text-gray-500">
-                  Manage your equipment costs here. Changes will be saved locally and applied to new sections.
-                </p>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Equipment Name</TableHead>
-                    <TableHead>Hourly Rate ($)</TableHead>
-                    <TableHead>Daily Rate (8hrs)</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {editableEquipmentList.map((equipment, index) => (
-                    <TableRow key={`equipment-${index}`}>
-                      <TableCell>
-                        <Input
-                          value={equipment.name}
-                          onChange={(e) => {
-                            const updated = [...editableEquipmentList]
-                            updated[index].name = e.target.value
-                            setEditableEquipmentList(updated)
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          value={equipment.hourlyRate}
-                          onChange={(e) => {
-                            const updated = [...editableEquipmentList]
-                            updated[index].hourlyRate = Number(e.target.value)
-                            setEditableEquipmentList(updated)
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>${(equipment.hourlyRate * 8).toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          onClick={() => {
-                            const updated = [...editableEquipmentList]
-                            updated.splice(index, 1)
-                            setEditableEquipmentList(updated)
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              <div className="mt-4 flex justify-between">
-                <Button
-                  onClick={() => {
-                    const newEquipment = { name: "New Equipment", hourlyRate: 100 }
-                    setEditableEquipmentList([...editableEquipmentList, newEquipment])
-
-                    // Save to localStorage immediately
-                    if (isBrowser()) {
-                      localStorage.setItem("equipmentList", JSON.stringify([...editableEquipmentList, newEquipment]))
-                    }
-
-                    toast({
-                      title: "Equipment added",
-                      description: "New equipment has been added to the list.",
-                    })
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Equipment
-                </Button>
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    // Save to localStorage
-                    if (isBrowser()) {
-                      localStorage.setItem("equipmentList", JSON.stringify(editableEquipmentList))
-
-                      toast({
-                        title: "Equipment list saved.",
-                        description: "Your equipment list has been saved locally.",
-                      })
-                    }
-                  }}
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Equipment List
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      <div className="mt-6 p-4 bg-gray-100 rounded-md">
-        <div className="flex justify-between items-center">
-          <span className="text-xl font-medium">Job Total:</span>
-          <div>
-            <span className="text-xl font-bold">${calculateJobTotalWithoutMarkup().toFixed(2)}</span>
-            {Object.values(jobData.markups).some((markup) => markup > 0) && (
-              <span className="text-red-500 ml-2 font-medium">(With Markups: ${calculateJobTotal().toFixed(2)})</span>
+                  <CardFooter className="bg-muted/30 flex justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Section Cost:</p>
+                      <p className="text-lg font-bold">${calculateSectionTotal(section).toFixed(2)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">Area: {section.area?.toFixed(2) || "0.00"} sq ft</p>
+                      <p className="text-sm font-medium">Tonnage: {section.tons?.toFixed(2) || "0.00"} tons</p>
+                    </div>
+                  </CardFooter>
+                </Card>
+              ))
             )}
-          </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="equipment" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Equipment List</CardTitle>
+                <CardDescription>View the equipment list with hourly rates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Hourly Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {equipmentList.map((item) => (
+                      <TableRow key={item.name}>
+                        <TableCell>{item.name}</TableCell>
+                        <TableCell>${item.hourlyRate.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Material Types</CardTitle>
+                <CardDescription>View the available material types</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {materialTypes.map((item) => (
+                      <TableRow key={item.code}>
+                        <TableCell>{item.code}</TableCell>
+                        <TableCell>{item.name}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Crew Members</CardTitle>
+                <CardDescription>View the crew members and their rates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Regular Rate</TableHead>
+                      <TableHead>Overtime Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {crewMembers.map((member) => (
+                      <TableRow key={member.id}>
+                        <TableCell>{member.name}</TableCell>
+                        <TableCell>{member.title}</TableCell>
+                        <TableCell>${member.rate.toFixed(2)}</TableCell>
+                        <TableCell>${member.overtimeRate.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
-      <ContactForm open={isContactFormOpen} onOpenChange={setIsContactFormOpen} onSubmit={handleContactFormSubmit} />
-
-      <Calculator open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
-
-      <Dialog open={isMixCalculatorOpen} onOpenChange={setIsMixCalculatorOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Asphalt Mix Calculator</DialogTitle>
-          </DialogHeader>
-          <MixCalculator />
-        </DialogContent>
-      </Dialog>
-
-      {/* Config Dialog */}
-      <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Configuration</DialogTitle>
+            <DialogDescription>Configure application settings and defaults</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <h3 className="font-medium">Default Markup Percentage</h3>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                placeholder="Default markup percentage"
-                value={jobData.defaultMarkup || ""}
-                onChange={(e) =>
-                  setJobData({
-                    ...jobData,
-                    defaultMarkup: e.target.value ? Number(e.target.value) : "",
-                  })
-                }
-              />
-            </div>
 
-            <div className="space-y-2">
-              <h3 className="font-medium">Default Terms & Conditions</h3>
-              <Textarea
-                value={jobData.terms || ""}
-                onChange={(e) => setJobData({ ...jobData, terms: e.target.value })}
-                placeholder="Enter default terms and conditions"
-                rows={4}
-              />
-            </div>
+          <Tabs defaultValue="general">
+            <TabsList>
+              <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="export">Export/Import</TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-2">
-              <h3 className="font-medium">Other Settings</h3>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="autoSave"
-                  checked={jobData.autoSave || false}
-                  onCheckedChange={(checked) => setJobData({ ...jobData, autoSave: !!checked })}
-                />
-                <Label htmlFor="autoSave">Enable auto-save</Label>
+            <TabsContent value="general" className="space-y-4">
+              <div className="space-y-4">
+                <h3 className="text-md font-medium">Markup Percentages (Internal Only)</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="equipment-markup">Equipment Markup</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="equipment-markup"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={jobData.markup.equipment}
+                        onChange={(e) =>
+                          setJobData({
+                            ...jobData,
+                            markup: {
+                              ...jobData.markup,
+                              equipment: Number.parseFloat(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-24"
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="labor-markup">Labor Markup</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="labor-markup"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={jobData.markup.labor}
+                        onChange={(e) =>
+                          setJobData({
+                            ...jobData,
+                            markup: {
+                              ...jobData.markup,
+                              labor: Number.parseFloat(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-24"
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="materials-markup">Materials Markup</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="materials-markup"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={jobData.markup.materials}
+                        onChange={(e) =>
+                          setJobData({
+                            ...jobData,
+                            markup: {
+                              ...jobData.markup,
+                              materials: Number.parseFloat(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-24"
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="trucking-markup">Trucking Markup</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="trucking-markup"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={jobData.markup.trucking}
+                        onChange={(e) =>
+                          setJobData({
+                            ...jobData,
+                            markup: {
+                              ...jobData.markup,
+                              trucking: Number.parseFloat(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-24"
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="overtime-markup">Overtime Markup</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="overtime-markup"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={jobData.markup.overtime}
+                        onChange={(e) =>
+                          setJobData({
+                            ...jobData,
+                            markup: {
+                              ...jobData.markup,
+                              overtime: Number.parseFloat(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-24"
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  These markups will be applied to their respective cost categories but won't be shown separately on the
+                  customer quote.
+                </p>
               </div>
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsConfigOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                handleSaveConfig()
-                setIsConfigOpen(false)
-                toast({
-                  title: "Configuration saved",
-                  description: "Your configuration has been successfully saved.",
-                })
-              }}
-            >
-              Save Settings
-            </Button>
-          </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
-      <QuotePreview
-        open={isQuotePreviewOpen}
-        onOpenChange={setIsQuotePreviewOpen}
-        jobData={jobData}
-        quoteNumber={quoteNumber}
-        contactInfo={jobData.contactInfo || contactInfo}
-        onSave={(updatedJobData, updatedContactInfo) => {
-          setJobData({
-            ...updatedJobData,
-            contactInfo: updatedContactInfo,
-          })
-          toast({
-            title: "Quote saved.",
-            description: "The quote has been successfully saved.",
-          })
-        }}
-      />
-
-      <style jsx>{`
-        .dropdown {
-          position: relative;
-          display: inline-block;
-        }
-        
-        .dropdown-content {
-          position: absolute;
-          background-color: white;
-          min-width: 160px;
-          box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-          z-index: 1;
-          border-radius: 0.375rem;
-          display: none;
-          flex-direction: column;
-        }
-        
-        .dropdown:hover .dropdown-content {
-          display: flex;
-          flex-direction: column;
-        }
-      `}</style>
+      <QuotePreview open={showQuotePreview} onOpenChange={setShowQuotePreview} jobData={jobData} />
     </div>
   )
 }
-
-export default JobCostDashboard

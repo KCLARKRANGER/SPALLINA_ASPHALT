@@ -1,53 +1,24 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import type { ContactInfo } from "./contact-form"
-import { formatQuoteNumber } from "../utils/quote-number"
-import { Printer, Mail, X, Download, ChevronDown, ChevronUp } from "lucide-react"
-import JSZip from "jszip"
-import FileSaver from "file-saver"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { formatQuoteNumber } from "@/utils/quote-number"
+import { Printer, Mail, X, Download, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
+import { useState } from "react"
+import html2canvas from "html2canvas"
 import { jsPDF } from "jspdf"
-import autoTable from "jspdf-autotable"
 
 interface QuotePreviewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   jobData: any
-  quoteNumber: number
-  contactInfo: ContactInfo
-  onSave: (updatedJobData: any, updatedContactInfo: ContactInfo) => void
 }
 
-export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contactInfo, onSave }: QuotePreviewProps) {
-  const [editMode, setEditMode] = useState(false)
-  const [editedJobData, setEditedJobData] = useState({ ...jobData })
-  const [editedContactInfo, setEditedContactInfo] = useState({ ...contactInfo })
+export function QuotePreview({ open, onOpenChange, jobData }: QuotePreviewProps) {
   const [showDetails, setShowDetails] = useState(true)
+  const [viewMode, setViewMode] = useState<"internal" | "customer">("internal")
   const printRef = useRef<HTMLDivElement>(null)
-
-  // Update editedJobData when jobData changes or when dialog opens
-  useEffect(() => {
-    if (open) {
-      setEditedJobData({ ...jobData })
-      // Use jobData.contactInfo if available, otherwise use the contactInfo prop
-      setEditedContactInfo(jobData.contactInfo || { ...contactInfo })
-    }
-  }, [open, jobData, contactInfo])
-
-  const handleSave = () => {
-    // Pass both the updated job data and contact info to the parent component
-    onSave(
-      {
-        ...editedJobData,
-        contactInfo: editedContactInfo,
-      },
-      editedContactInfo,
-    )
-    setEditMode(false)
-  }
 
   const handlePrint = () => {
     if (printRef.current) {
@@ -61,224 +32,152 @@ export function QuotePreview({ open, onOpenChange, jobData, quoteNumber, contact
     }
   }
 
-  const handleExport = async () => {
-    // Create a zip file with the job name and date
-    const zip = new JSZip()
-    const folderName = `${editedJobData.projectName}_${editedJobData.date.replace(/-/g, "")}`
-    const folder = zip.folder(folderName)
+  const handleExportPDF = async () => {
+    if (!printRef.current) return
 
-    if (folder) {
-      // Add the configuration file (JSON)
-      const configData = {
-        jobData: editedJobData,
-        contactInfo: editedContactInfo,
-        quoteNumber,
-        date: new Date().toISOString(),
-      }
-      folder.file("config.json", JSON.stringify(configData, null, 2))
+    try {
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        logging: false,
+        useCORS: true,
+      })
 
-      // Add the quote as CSV
-      let csvContent = "Quote Number,Project Name,Customer Name,Location,Date,Contact Name,Contact Phone\n"
-      csvContent += `${formatQuoteNumber(quoteNumber)},${editedJobData.projectName || ""},${
-        editedJobData.customerName || ""
-      },${editedJobData.location || ""},${editedJobData.date || ""},${editedContactInfo.name || ""},${
-        editedContactInfo.phone || ""
-      }\n\n`
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
 
-      // Add section headers
-      csvContent +=
-        "Section,Area (sq ft),Asphalt (tons),Equipment Cost,Labor Cost,Materials Cost,Trucking Cost,Mobilization Cost,Total Cost\n"
+      const imgWidth = 210 // A4 width in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
 
-      // Add section data
-      editedJobData.sections
-        .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-        .forEach((section: any) => {
-          const equipmentTotal = section.equipment.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-          const laborTotal = section.labor.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-          const materialsTotal = section.materials.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-          const truckingTotal = section.trucking.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-
-          // Calculate mobilization cost
-          let mobilizationTotal = 0
-          if (
-            editedJobData.mobilization?.enabled &&
-            (!editedJobData.mobilization.sectionSpecific ||
-              (editedJobData.mobilization.sectionSpecific &&
-                editedJobData.mobilization.sectionMobilization[section.id]))
-          ) {
-            const mobilizationCost = 1020 // Base cost
-            mobilizationTotal = editedJobData.mobilization.sectionSpecific
-              ? mobilizationCost *
-                editedJobData.mobilization.numTrucks *
-                (editedJobData.mobilization.tripType === "round-trip" ? 2 : 1)
-              : (mobilizationCost *
-                  editedJobData.mobilization.numTrucks *
-                  (editedJobData.mobilization.tripType === "round-trip" ? 2 : 1)) /
-                editedJobData.sections.filter((s: any) => editedJobData.selectedSections.includes(s.id)).length
-          }
-
-          const sectionTotal = equipmentTotal + laborTotal + materialsTotal + truckingTotal + mobilizationTotal
-
-          csvContent += `${section.name},${section.area || 0},${section.tons || 0},${equipmentTotal.toFixed(
-            2,
-          )},${laborTotal.toFixed(2)},${materialsTotal.toFixed(2)},${truckingTotal.toFixed(
-            2,
-          )},${mobilizationTotal.toFixed(2)},${sectionTotal.toFixed(2)}\n`
-        })
-
-      // Add total row
-      const totalCost = calculateJobTotal()
-      csvContent += `\nTOTAL,,,,,,,,${totalCost.toFixed(2)}\n`
-
-      folder.file("quote.csv", csvContent)
-
-      // Generate the zip file and save it
-      const content = await zip.generateAsync({ type: "blob" })
-      FileSaver.saveAs(content, `${folderName}.zip`)
+      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight)
+      pdf.save(`estimate-${jobData.quoteNumber}.pdf`)
+    } catch (error) {
+      console.error("Error generating PDF:", error)
     }
   }
 
-  // Generate PDF for email
-  const generatePDF = () => {
-    const doc = new jsPDF()
+  const handleEmail = async () => {
+    if (!printRef.current) return
 
-    // Add header
-    doc.setFontSize(20)
-    doc.text("Job Cost Estimate", 20, 20)
+    try {
+      // First generate the PDF
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        logging: false,
+        useCORS: true,
+      })
 
-    doc.setFontSize(12)
-    doc.text(`Project: ${editedJobData.projectName}`, 20, 30)
-    doc.text(`Location: ${editedJobData.location || "N/A"}`, 20, 40)
-    doc.text(`Date: ${editedJobData.date || new Date().toLocaleDateString()}`, 20, 50)
-    doc.text(`Total Area: ${editedJobData.totalArea?.toLocaleString() || "0"} sq ft`, 20, 60)
-    doc.text(`Total Tonnage: ${editedJobData.totalTonnage?.toLocaleString() || "0"} tons`, 20, 70)
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
 
-    // Add sections table
-    const sectionsTableData = editedJobData.sections
-      .filter((section) => editedJobData.selectedSections.includes(section.id))
-      .map((section) => [
-        section.name,
-        section.area?.toString() || "0",
-        section.tons?.toString() || "0",
-        `$${section.equipment.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${section.labor.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${section.materials.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${section.trucking.reduce((sum, item) => sum + (item.total || 0), 0).toFixed(2)}`,
-        `$${calculateSectionTotal(section).toFixed(2)}`,
-      ])
+      const imgWidth = 210 // A4 width in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
 
-    autoTable(doc, {
-      startY: 80,
-      head: [["Section", "Area (sq ft)", "Tons", "Equipment", "Labor", "Materials", "Trucking", "Total"]],
-      body: sectionsTableData,
-    })
+      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight)
 
-    // Add total
-    const finalY = (doc as any).lastAutoTable.finalY || 150
-    doc.text(`Total Job Cost: $${calculateJobTotal().toFixed(2)}`, 20, finalY + 10)
+      // Save the PDF file
+      const pdfBlob = pdf.output("blob")
+      const pdfUrl = URL.createObjectURL(pdfBlob)
 
-    // Add notes if available
-    if (editedJobData.notes) {
-      doc.text("Notes:", 20, finalY + 20)
-      doc.text(editedJobData.notes, 20, finalY + 30)
-    }
+      // Download the PDF automatically
+      const link = document.createElement("a")
+      link.href = pdfUrl
+      link.download = `estimate-${jobData.quoteNumber}.pdf`
+      link.click()
 
-    return doc
-  }
+      // Create email with pre-filled content
+      const subject = `Asphalt Estimate for ${jobData.projectName || "Project"}`
+      const body = `Dear ${jobData.customerName || "Customer"},
 
-  // Handle email with PDF
-  const handleEmail = () => {
-    // Generate PDF
-    const doc = generatePDF()
-    const pdfBlob = doc.output("blob")
-    const pdfFile = new File([pdfBlob], `${editedJobData.projectName.replace(/\s+/g, "_")}_estimate.pdf`, {
-      type: "application/pdf",
-    })
+I hope this email finds you well. Attached please find our detailed estimate for the ${jobData.projectName || "Project"} project located at ${jobData.projectLocation || "Location"}.
 
-    // Create email draft
-    const subject = `Estimate for ${editedJobData.projectName}`
-    const body = `Dear Customer,
+Quote Number: ${jobData.quoteNumber}
+Total Estimate: $${calculateFinalQuoteAmount().toFixed(2)}
 
-Please find attached the estimate for your project: ${editedJobData.projectName}.
+Please review the attached PDF and let me know if you have any questions or if you would like to discuss any aspects of this estimate.
 
-Project Details:
-- Location: ${editedJobData.location || "N/A"}
-- Date: ${editedJobData.date || new Date().toLocaleDateString()}
-- Total Area: ${editedJobData.totalArea?.toLocaleString() || "0"} sq ft
-- Total Tonnage: ${editedJobData.totalTonnage?.toLocaleString() || "0"} tons
-- Total Cost: $${calculateJobTotal().toFixed(2)}
-
-If you have any questions or would like to proceed with this estimate, please contact us.
+Thank you for considering Spallina Materials for your project.
 
 Best regards,
-${editedContactInfo.name || editedJobData.contactInfo?.name}
-${editedContactInfo.position || editedJobData.contactInfo?.position}
-${editedContactInfo.company || editedJobData.contactInfo?.company}
-${editedContactInfo.phone || editedJobData.contactInfo?.phone}
-${editedContactInfo.email || editedJobData.contactInfo?.email}
-`
+${jobData.contactInfo?.preparedBy || "Estimator"}
+${jobData.contactInfo?.phone || ""}
+${jobData.contactInfo?.email || ""}`
 
-    // Create mailto link with subject and body
-    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-
-    // Create a temporary link to download the PDF
-    const pdfUrl = URL.createObjectURL(pdfFile)
-    const downloadLink = document.createElement("a")
-    downloadLink.href = pdfUrl
-    downloadLink.download = `${editedJobData.projectName.replace(/\s+/g, "_")}_estimate.pdf`
-    document.body.appendChild(downloadLink)
-    downloadLink.click()
-    document.body.removeChild(downloadLink)
-
-    // Open email client
-    window.location.href = mailtoLink
-  }
-
-  // Calculate section totals (without markups for project summary)
-  const calculateSectionTotal = (section: any) => {
-    const equipmentTotal = section.equipment.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-    const laborTotal = section.labor.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-    const materialsTotal = section.materials.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-    const truckingTotal = section.trucking.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-
-    // Calculate mobilization cost if enabled
-    let mobilizationTotal = 0
-    if (
-      editedJobData.mobilization?.enabled &&
-      (!editedJobData.mobilization.sectionSpecific ||
-        (editedJobData.mobilization.sectionSpecific && editedJobData.mobilization.sectionMobilization[section.id]))
-    ) {
-      const mobilizationCost = 1020 // Base cost
-      mobilizationTotal = editedJobData.mobilization.sectionSpecific
-        ? mobilizationCost *
-          editedJobData.mobilization.numTrucks *
-          (editedJobData.mobilization.tripType === "round-trip" ? 2 : 1)
-        : (mobilizationCost *
-            editedJobData.mobilization.numTrucks *
-            (editedJobData.mobilization.tripType === "round-trip" ? 2 : 1)) /
-          editedJobData.sections.filter((s: any) => editedJobData.selectedSections.includes(s.id)).length
+      // Open email client with pre-filled content
+      window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    } catch (error) {
+      console.error("Error preparing email:", error)
     }
-
-    return equipmentTotal + laborTotal + materialsTotal + truckingTotal + mobilizationTotal
   }
 
-  // Calculate job total (without markups for project summary)
+  // Apply markup to a cost based on category
+  const applyMarkup = (cost, category) => {
+    const markupPercentage = jobData.markup?.[category] || 15
+    return cost * (1 + markupPercentage / 100)
+  }
+
+  // Calculate section total with markup applied
+  const calculateSectionTotal = (section) => {
+    const equipmentTotal = section.equipment?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+    const laborTotal = section.labor?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+    const materialsTotal = section.materials?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+    const truckingTotal = section.trucking?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+
+    if (viewMode === "internal") {
+      return equipmentTotal + laborTotal + materialsTotal + truckingTotal
+    } else {
+      return (
+        applyMarkup(equipmentTotal, "equipment") +
+        applyMarkup(laborTotal, "labor") +
+        applyMarkup(materialsTotal, "materials") +
+        applyMarkup(truckingTotal, "trucking")
+      )
+    }
+  }
+
+  // Calculate job total
   const calculateJobTotal = () => {
-    return editedJobData.sections
-      .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => sum + calculateSectionTotal(section), 0)
+    return jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => sum + calculateSectionTotal(section), 0)
+  }
+
+  // Calculate final quote amount with markup
+  const calculateFinalQuoteAmount = () => {
+    if (viewMode === "internal") {
+      const equipmentTotal = calculateTotalEquipmentCost()
+      const laborTotal = calculateTotalLaborCost()
+      const materialsTotal = calculateTotalMaterialsCost()
+      const truckingTotal = calculateTotalTruckingCost()
+
+      return (
+        applyMarkup(equipmentTotal, "equipment") +
+        applyMarkup(laborTotal, "labor") +
+        applyMarkup(materialsTotal, "materials") +
+        applyMarkup(truckingTotal, "trucking")
+      )
+    } else {
+      return calculateJobTotal()
+    }
   }
 
   // Get all equipment from selected sections
   const getAllEquipment = () => {
     const result = []
 
-    for (const section of editedJobData.sections.filter((s: any) => editedJobData.selectedSections.includes(s.id))) {
-      if (section.equipment.length > 0) {
+    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
+      if (section.equipment && section.equipment.length > 0) {
         result.push({
           sectionName: section.name,
           items: section.equipment,
-          total: section.equipment.reduce((sum: number, item: any) => sum + (item.total || 0), 0),
+          total: section.equipment.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
         })
       }
     }
@@ -290,12 +189,12 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
   const getAllLabor = () => {
     const result = []
 
-    for (const section of editedJobData.sections.filter((s: any) => editedJobData.selectedSections.includes(s.id))) {
-      if (section.labor.length > 0) {
+    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
+      if (section.labor && section.labor.length > 0) {
         result.push({
           sectionName: section.name,
           items: section.labor,
-          total: section.labor.reduce((sum: number, item: any) => sum + (item.total || 0), 0),
+          total: section.labor.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
         })
       }
     }
@@ -307,12 +206,12 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
   const getAllMaterials = () => {
     const result = []
 
-    for (const section of editedJobData.sections.filter((s: any) => editedJobData.selectedSections.includes(s.id))) {
-      if (section.materials.length > 0) {
+    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
+      if (section.materials && section.materials.length > 0) {
         result.push({
           sectionName: section.name,
           items: section.materials,
-          total: section.materials.reduce((sum: number, item: any) => sum + (item.total || 0), 0),
+          total: section.materials.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
         })
       }
     }
@@ -324,12 +223,12 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
   const getAllTrucking = () => {
     const result = []
 
-    for (const section of editedJobData.sections.filter((s: any) => editedJobData.selectedSections.includes(s.id))) {
-      if (section.trucking.length > 0) {
+    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
+      if (section.trucking && section.trucking.length > 0) {
         result.push({
           sectionName: section.name,
           items: section.trucking,
-          total: section.trucking.reduce((sum: number, item: any) => sum + (item.total || 0), 0),
+          total: section.trucking.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
         })
       }
     }
@@ -339,45 +238,47 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
 
   // Calculate total equipment cost
   const calculateTotalEquipmentCost = () => {
-    return editedJobData.sections
-      .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => {
-        return sum + section.equipment.reduce((subSum: number, item: any) => subSum + (item.total || 0), 0)
+    return jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + (section.equipment?.reduce((subSum, item) => subSum + (Number(item.total) || 0), 0) || 0)
       }, 0)
   }
 
   // Calculate total labor cost
   const calculateTotalLaborCost = () => {
-    return editedJobData.sections
-      .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => {
-        return sum + section.labor.reduce((subSum: number, item: any) => subSum + (item.total || 0), 0)
+    return jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + (section.labor?.reduce((subSum, item) => subSum + (Number(item.total) || 0), 0) || 0)
       }, 0)
   }
 
   // Calculate total materials cost
   const calculateTotalMaterialsCost = () => {
-    return editedJobData.sections
-      .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => {
-        return sum + section.materials.reduce((subSum: number, item: any) => subSum + (item.total || 0), 0)
+    return jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + (section.materials?.reduce((subSum, item) => subSum + (Number(item.total) || 0), 0) || 0)
       }, 0)
   }
 
   // Calculate total trucking cost
   const calculateTotalTruckingCost = () => {
-    return editedJobData.sections
-      .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-      .reduce((sum: number, section: any) => {
-        return sum + section.trucking.reduce((subSum: number, item: any) => subSum + (item.total || 0), 0)
+    return jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + (section.trucking?.reduce((subSum, item) => subSum + (Number(item.total) || 0), 0) || 0)
       }, 0)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Job Summary</DialogTitle>
+        </DialogHeader>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Job Summary</h2>
           <div className="flex space-x-2">
             <Button variant="outline" onClick={handlePrint}>
               <Printer className="mr-2 h-4 w-4" />
@@ -387,20 +288,30 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
               <Mail className="mr-2 h-4 w-4" />
               Email
             </Button>
-            <Button variant="outline" onClick={handleExport}>
+            <Button variant="outline" onClick={handleExportPDF}>
               <Download className="mr-2 h-4 w-4" />
-              Save As
+              Save As PDF
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" />
+            <Button variant={viewMode === "internal" ? "default" : "outline"} onClick={() => setViewMode("internal")}>
+              <Eye className="mr-2 h-4 w-4" />
+              Internal View
+            </Button>
+            <Button variant={viewMode === "customer" ? "default" : "outline"} onClick={() => setViewMode("customer")}>
+              <EyeOff className="mr-2 h-4 w-4" />
+              Customer View
             </Button>
           </div>
+          <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         <div ref={printRef} className="p-4 bg-white">
           <div className="flex justify-between items-start mb-6">
             <div className="flex items-start gap-4">
-              <img src="/NEW_Logo.jpg" alt="Spallina Materials" className="h-24 object-contain" />
+              <div className="h-24 w-auto">
+                <img src="/spallina-logo.jpeg" alt="Spallina Materials" className="h-full w-auto object-contain" />
+              </div>
               <div>
                 <h1 className="text-3xl font-bold mb-2">Job Cost Estimate</h1>
                 <div className="text-sm">
@@ -419,8 +330,13 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
               </div>
             </div>
             <div className="text-right">
-              <p className="font-medium">Date: {new Date().toLocaleDateString()}</p>
-              <p className="font-medium">Estimate #: {formatQuoteNumber(quoteNumber)}</p>
+              <p className="font-medium">Date: {jobData.date || new Date().toLocaleDateString()}</p>
+              <p className="font-medium">
+                Estimate #: {formatQuoteNumber ? formatQuoteNumber(jobData.quoteNumber) : jobData.quoteNumber}
+              </p>
+              {viewMode === "internal" && (
+                <p className="text-xs text-red-600 font-bold mt-2">INTERNAL VIEW - NOT FOR CUSTOMER</p>
+              )}
             </div>
           </div>
 
@@ -429,29 +345,29 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p>
-                  <strong>Job Name:</strong> {editedJobData.projectName || "Untitled Job"}
+                  <strong>Job Name:</strong> {jobData.projectName || "Untitled Job"}
                 </p>
                 <p>
-                  <strong>Location:</strong> {editedJobData.location || "N/A"}
+                  <strong>Location:</strong> {jobData.projectLocation || "N/A"}
                 </p>
               </div>
               <div>
                 <p>
-                  <strong>Date:</strong> {editedJobData.date || "N/A"}
+                  <strong>Date:</strong> {jobData.date || "N/A"}
                 </p>
                 <p>
-                  <strong>Total Area:</strong> {editedJobData.totalArea?.toLocaleString() || "0"} sq ft
+                  <strong>Total Area:</strong> {jobData.totalArea ? jobData.totalArea.toLocaleString() : "0"} sq ft
                 </p>
                 <p>
-                  <strong>Total Tonnage:</strong> {editedJobData.totalTonnage?.toLocaleString() || "0"} tons
+                  <strong>Total Tonnage:</strong> {jobData.totalTonnage ? jobData.totalTonnage.toLocaleString() : "0"}{" "}
+                  tons
                 </p>
               </div>
             </div>
           </div>
 
           {/* Job Sections Summary */}
-          {editedJobData.sections.filter((section: any) => editedJobData.selectedSections.includes(section.id)).length >
-            0 && (
+          {jobData.sections.filter((section) => jobData.selectedSections.includes(section.id)).length > 0 && (
             <div className="mb-6">
               <h2 className="text-xl font-bold mb-2">Job Sections</h2>
               <table className="w-full border-collapse">
@@ -466,31 +382,99 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                   </tr>
                 </thead>
                 <tbody>
-                  {editedJobData.sections
-                    .filter((section: any) => editedJobData.selectedSections.includes(section.id))
-                    .map((section: any, idx: number) => {
-                      const equipmentTotal = section.equipment.reduce(
-                        (sum: number, item: any) => sum + (item.total || 0),
-                        0,
-                      )
-                      const laborTotal = section.labor.reduce((sum: number, item: any) => sum + (item.total || 0), 0)
-                      const materialsTotal = section.materials.reduce(
-                        (sum: number, item: any) => sum + (item.total || 0),
-                        0,
-                      )
-                      const truckingTotal = section.trucking.reduce(
-                        (sum: number, item: any) => sum + (item.total || 0),
-                        0,
-                      )
+                  {jobData.sections
+                    .filter((section) => jobData.selectedSections.includes(section.id))
+                    .map((section, idx) => {
+                      const equipmentTotal =
+                        section.equipment?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+                      const laborTotal = section.labor?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+                      const materialsTotal =
+                        section.materials?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+                      const truckingTotal =
+                        section.trucking?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+
+                      // Calculate marked-up costs
+                      const equipmentTotalWithMarkup = applyMarkup(equipmentTotal, "equipment")
+                      const laborTotalWithMarkup = applyMarkup(laborTotal, "labor")
+                      const materialsTotalWithMarkup = applyMarkup(materialsTotal, "materials")
+                      const truckingTotalWithMarkup = applyMarkup(truckingTotal, "trucking")
 
                       return (
                         <tr key={idx} className="border-b">
                           <td className="border p-2">{section.name}</td>
-                          <td className="border p-2 text-right">${equipmentTotal.toFixed(2)}</td>
-                          <td className="border p-2 text-right">${laborTotal.toFixed(2)}</td>
-                          <td className="border p-2 text-right">${materialsTotal.toFixed(2)}</td>
-                          <td className="border p-2 text-right">${truckingTotal.toFixed(2)}</td>
-                          <td className="border p-2 text-right">${calculateSectionTotal(section).toFixed(2)}</td>
+                          <td className="border p-2 text-right">
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic text-gray-600">${equipmentTotal?.toFixed(2)}</span>
+                                <br />
+                                <span className="font-bold">${equipmentTotalWithMarkup?.toFixed(2)}</span>
+                              </>
+                            ) : (
+                              <>${equipmentTotalWithMarkup?.toFixed(2)}</>
+                            )}
+                          </td>
+                          <td className="border p-2 text-right">
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic text-gray-600">${laborTotal?.toFixed(2)}</span>
+                                <br />
+                                <span className="font-bold">${laborTotalWithMarkup?.toFixed(2)}</span>
+                              </>
+                            ) : (
+                              <>${laborTotalWithMarkup?.toFixed(2)}</>
+                            )}
+                          </td>
+                          <td className="border p-2 text-right">
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic text-gray-600">${materialsTotal?.toFixed(2)}</span>
+                                <br />
+                                <span className="font-bold">${materialsTotalWithMarkup?.toFixed(2)}</span>
+                              </>
+                            ) : (
+                              <>${materialsTotalWithMarkup?.toFixed(2)}</>
+                            )}
+                          </td>
+                          <td className="border p-2 text-right">
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic text-gray-600">${truckingTotal?.toFixed(2)}</span>
+                                <br />
+                                <span className="font-bold">${truckingTotalWithMarkup?.toFixed(2)}</span>
+                              </>
+                            ) : (
+                              <>${truckingTotalWithMarkup?.toFixed(2)}</>
+                            )}
+                          </td>
+                          <td className="border p-2 text-right font-bold">
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic text-gray-600">
+                                  ${(equipmentTotal + laborTotal + materialsTotal + truckingTotal)?.toFixed(2)}
+                                </span>
+                                <br />
+                                <span className="font-bold">
+                                  $
+                                  {(
+                                    equipmentTotalWithMarkup +
+                                    laborTotalWithMarkup +
+                                    materialsTotalWithMarkup +
+                                    truckingTotalWithMarkup
+                                  )?.toFixed(2)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                $
+                                {(
+                                  equipmentTotalWithMarkup +
+                                  laborTotalWithMarkup +
+                                  materialsTotalWithMarkup +
+                                  truckingTotalWithMarkup
+                                )?.toFixed(2)}
+                              </>
+                            )}
+                          </td>
                         </tr>
                       )
                     })}
@@ -522,7 +506,20 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                 <div className="mb-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-semibold">Equipment Cost (Selected Sections):</h3>
-                    <span className="font-semibold">${calculateTotalEquipmentCost().toFixed(2)}</span>
+                    <span className="font-semibold">
+                      {viewMode === "internal" ? (
+                        <>
+                          <span className="italic text-gray-600">${calculateTotalEquipmentCost().toFixed(2)}</span>
+                          {" → "}
+                          <span className="font-bold">
+                            ${applyMarkup(calculateTotalEquipmentCost(), "equipment").toFixed(2)}
+                          </span>{" "}
+                          <span className="text-xs text-gray-500">({jobData.markup?.equipment || 15}% markup)</span>
+                        </>
+                      ) : (
+                        <>${applyMarkup(calculateTotalEquipmentCost(), "equipment").toFixed(2)}</>
+                      )}
+                    </span>
                   </div>
 
                   {getAllEquipment().map((sectionEquipment, idx) => (
@@ -532,13 +529,46 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                           ✓
                         </div>
                         <span className="font-medium">
-                          {sectionEquipment.sectionName} - ${sectionEquipment.total.toFixed(2)}
+                          {sectionEquipment.sectionName} -
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic text-gray-600"> ${sectionEquipment.total.toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-bold">
+                                ${applyMarkup(sectionEquipment.total, "equipment").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(sectionEquipment.total, "equipment").toFixed(2)}</>
+                          )}
                         </span>
                       </div>
                       {sectionEquipment.items.map((item, itemIdx) => (
                         <p key={`equipment-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity} {item.quantity > 1 ? "units" : "unit"} @ ${item.rate}/hr ×{" "}
-                          {item.hours} hrs = ${item.total?.toFixed(2)}
+                          {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "units" : "unit"} @
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-medium">
+                                ${applyMarkup(Number(item.rate) || 0, "equipment").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(Number(item.rate) || 0, "equipment").toFixed(2)}</>
+                          )}
+                          /hr × {item.hours || 0} hrs =
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-medium">
+                                ${applyMarkup(Number(item.total) || 0, "equipment").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(Number(item.total) || 0, "equipment").toFixed(2)}</>
+                          )}
                         </p>
                       ))}
                     </div>
@@ -549,7 +579,20 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                 <div className="mb-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-semibold">Labor Cost (Selected Sections):</h3>
-                    <span className="font-semibold">${calculateTotalLaborCost().toFixed(2)}</span>
+                    <span className="font-semibold">
+                      {viewMode === "internal" ? (
+                        <>
+                          <span className="italic text-gray-600">${calculateTotalLaborCost().toFixed(2)}</span>
+                          {" → "}
+                          <span className="font-bold">
+                            ${applyMarkup(calculateTotalLaborCost(), "labor").toFixed(2)}
+                          </span>{" "}
+                          <span className="text-xs text-gray-500">({jobData.markup?.labor || 15}% markup)</span>
+                        </>
+                      ) : (
+                        <>${applyMarkup(calculateTotalLaborCost(), "labor").toFixed(2)}</>
+                      )}
+                    </span>
                   </div>
 
                   {getAllLabor().map((sectionLabor, idx) => (
@@ -559,15 +602,71 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                           ✓
                         </div>
                         <span className="font-medium">
-                          {sectionLabor.sectionName} - ${sectionLabor.total.toFixed(2)}
+                          {sectionLabor.sectionName} -
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic text-gray-600"> ${sectionLabor.total.toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-bold">${applyMarkup(sectionLabor.total, "labor").toFixed(2)}</span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(sectionLabor.total, "labor").toFixed(2)}</>
+                          )}
                         </span>
                       </div>
-                      {sectionLabor.items.map((item, itemIdx) => (
-                        <p key={`labor-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity} {item.quantity > 1 ? "workers" : "worker"} @ ${item.rate}/hr ×{" "}
-                          {item.hours} hrs = ${item.total?.toFixed(2)}
-                        </p>
-                      ))}
+                      {sectionLabor.items.map((item, itemIdx) => {
+                        const regularHours = Math.min(item.hours || 0, 8)
+                        const overtimeHours = Math.max((item.hours || 0) - 8, 0)
+                        const regularPay = (item.quantity || 0) * regularHours * (Number(item.rate) || 0)
+                        const overtimePay = (item.quantity || 0) * overtimeHours * (Number(item.overtimeRate) || 0)
+                        const totalPay = regularPay + overtimePay
+
+                        return (
+                          <p key={`labor-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
+                            {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "workers" : "worker"} @
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                                {" → "}
+                                <span className="font-medium">
+                                  ${applyMarkup(Number(item.rate) || 0, "labor").toFixed(2)}
+                                </span>
+                              </>
+                            ) : (
+                              <> ${applyMarkup(Number(item.rate) || 0, "labor").toFixed(2)}</>
+                            )}
+                            /hr × {regularHours} hrs
+                            {overtimeHours > 0 && (
+                              <>
+                                {" + "}
+                                <span className="text-orange-500">{overtimeHours} OT hrs</span> @
+                                {viewMode === "internal" ? (
+                                  <>
+                                    <span className="italic"> ${(Number(item.overtimeRate) || 0).toFixed(2)}</span>
+                                    {" → "}
+                                    <span className="font-medium">
+                                      ${applyMarkup(Number(item.overtimeRate) || 0, "labor").toFixed(2)}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <> ${applyMarkup(Number(item.overtimeRate) || 0, "labor").toFixed(2)}</>
+                                )}
+                                /hr
+                              </>
+                            )}
+                            {" = "}
+                            {viewMode === "internal" ? (
+                              <>
+                                <span className="italic">${totalPay.toFixed(2)}</span>
+                                {" → "}
+                                <span className="font-medium">${applyMarkup(totalPay, "labor").toFixed(2)}</span>
+                              </>
+                            ) : (
+                              <>${applyMarkup(totalPay, "labor").toFixed(2)}</>
+                            )}
+                          </p>
+                        )
+                      })}
                     </div>
                   ))}
                 </div>
@@ -576,7 +675,20 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                 <div className="mb-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-semibold">Materials Cost:</h3>
-                    <span className="font-semibold">${calculateTotalMaterialsCost().toFixed(2)}</span>
+                    <span className="font-semibold">
+                      {viewMode === "internal" ? (
+                        <>
+                          <span className="italic text-gray-600">${calculateTotalMaterialsCost().toFixed(2)}</span>
+                          {" → "}
+                          <span className="font-bold">
+                            ${applyMarkup(calculateTotalMaterialsCost(), "materials").toFixed(2)}
+                          </span>{" "}
+                          <span className="text-xs text-gray-500">({jobData.markup?.materials || 15}% markup)</span>
+                        </>
+                      ) : (
+                        <>${applyMarkup(calculateTotalMaterialsCost(), "materials").toFixed(2)}</>
+                      )}
+                    </span>
                   </div>
 
                   {getAllMaterials().map((sectionMaterials, idx) => (
@@ -586,13 +698,47 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                           ✓
                         </div>
                         <span className="font-medium">
-                          {sectionMaterials.sectionName} - ${sectionMaterials.total.toFixed(2)}
+                          {sectionMaterials.sectionName} -
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic text-gray-600"> ${sectionMaterials.total.toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-bold">
+                                ${applyMarkup(sectionMaterials.total, "materials").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(sectionMaterials.total, "materials").toFixed(2)}</>
+                          )}
                         </span>
                       </div>
                       {sectionMaterials.items.map((item, itemIdx) => (
                         <p key={`material-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity} {item.unit} @ ${item.rate}/{item.unit} = $
-                          {item.total?.toFixed(2)}
+                          {item.name}: {item.thickness ? `${item.thickness}" thick, ` : ""}
+                          {item.quantity || 0} {item.unit} @
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-medium">
+                                ${applyMarkup(Number(item.rate) || 0, "materials").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(Number(item.rate) || 0, "materials").toFixed(2)}</>
+                          )}
+                          /{item.unit} =
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-medium">
+                                ${applyMarkup(Number(item.total) || 0, "materials").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(Number(item.total) || 0, "materials").toFixed(2)}</>
+                          )}
                         </p>
                       ))}
                     </div>
@@ -603,7 +749,20 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                 <div className="mb-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-semibold">Trucking Cost:</h3>
-                    <span className="font-semibold">${calculateTotalTruckingCost().toFixed(2)}</span>
+                    <span className="font-semibold">
+                      {viewMode === "internal" ? (
+                        <>
+                          <span className="italic text-gray-600">${calculateTotalTruckingCost().toFixed(2)}</span>
+                          {" → "}
+                          <span className="font-bold">
+                            ${applyMarkup(calculateTotalTruckingCost(), "trucking").toFixed(2)}
+                          </span>{" "}
+                          <span className="text-xs text-gray-500">({jobData.markup?.trucking || 15}% markup)</span>
+                        </>
+                      ) : (
+                        <>${applyMarkup(calculateTotalTruckingCost(), "trucking").toFixed(2)}</>
+                      )}
+                    </span>
                   </div>
 
                   {getAllTrucking().map((sectionTrucking, idx) => (
@@ -613,15 +772,83 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
                           ✓
                         </div>
                         <span className="font-medium">
-                          {sectionTrucking.sectionName} - ${sectionTrucking.total.toFixed(2)}
+                          {sectionTrucking.sectionName} -
+                          {viewMode === "internal" ? (
+                            <>
+                              <span className="italic text-gray-600"> ${sectionTrucking.total.toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-bold">
+                                ${applyMarkup(sectionTrucking.total, "trucking").toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <> ${applyMarkup(sectionTrucking.total, "trucking").toFixed(2)}</>
+                          )}
                         </span>
                       </div>
-                      {sectionTrucking.items.map((item, itemIdx) => (
-                        <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity} {item.quantity > 1 ? "trucks" : "truck"} @ ${item.rate}/hr ×{" "}
-                          {item.hours} hrs = ${item.total?.toFixed(2)}
-                        </p>
-                      ))}
+                      {sectionTrucking.items.map((item, itemIdx) => {
+                        if (item.pricingType === "per-ton") {
+                          return (
+                            <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
+                              {item.name} ({item.function}): {item.quantity || 0}{" "}
+                              {(item.quantity || 0) > 1 ? "trucks" : "truck"} @
+                              {viewMode === "internal" ? (
+                                <>
+                                  <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                                  {" → "}
+                                  <span className="font-medium">
+                                    ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}
+                                  </span>
+                                </>
+                              ) : (
+                                <> ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}</>
+                              )}
+                              /ton × {item.tons} tons =
+                              {viewMode === "internal" ? (
+                                <>
+                                  <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                                  {" → "}
+                                  <span className="font-medium">
+                                    ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}
+                                  </span>
+                                </>
+                              ) : (
+                                <> ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}</>
+                              )}
+                            </p>
+                          )
+                        } else {
+                          return (
+                            <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
+                              {item.name} ({item.function}): {item.quantity || 0}{" "}
+                              {(item.quantity || 0) > 1 ? "trucks" : "truck"} @
+                              {viewMode === "internal" ? (
+                                <>
+                                  <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                                  {" → "}
+                                  <span className="font-medium">
+                                    ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}
+                                  </span>
+                                </>
+                              ) : (
+                                <> ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}</>
+                              )}
+                              /hr × {item.hours || 0} hrs =
+                              {viewMode === "internal" ? (
+                                <>
+                                  <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                                  {" → "}
+                                  <span className="font-medium">
+                                    ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}
+                                  </span>
+                                </>
+                              ) : (
+                                <> ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}</>
+                              )}
+                            </p>
+                          )
+                        }
+                      })}
                     </div>
                   ))}
                 </div>
@@ -631,39 +858,42 @@ ${editedContactInfo.email || editedJobData.contactInfo?.email}
             <div className="mt-4 p-4 bg-gray-100 rounded-md">
               <div className="flex justify-between items-center">
                 <span className="text-xl font-medium">Total Job Cost:</span>
-                <span className="text-xl font-bold">${calculateJobTotal().toFixed(2)}</span>
+                <span className="text-xl font-bold">${calculateFinalQuoteAmount().toFixed(2)}</span>
               </div>
+              {viewMode === "internal" && (
+                <div className="mt-2 text-sm text-gray-600">
+                  <p>Base Cost: ${calculateJobTotal().toFixed(2)}</p>
+                  <p>Equipment Markup: {jobData.markup?.equipment || 15}%</p>
+                  <p>Labor Markup: {jobData.markup?.labor || 15}%</p>
+                  <p>Materials Markup: {jobData.markup?.materials || 15}%</p>
+                  <p>Trucking Markup: {jobData.markup?.trucking || 15}%</p>
+                  <p>Overtime Markup: {jobData.markup?.overtime || 15}%</p>
+                </div>
+              )}
             </div>
           </div>
 
-          {editedJobData.notes && (
+          {jobData.notes && (
             <div className="mt-6">
               <h3 className="text-lg font-bold mb-2">Notes</h3>
-              <p className="text-gray-700">{editedJobData.notes}</p>
+              <p className="text-gray-700">{jobData.notes}</p>
             </div>
           )}
 
           <div className="mt-8 border-t pt-4">
             <h3 className="text-lg font-bold mb-2">Terms & Conditions</h3>
-            {editMode ? (
-              <Textarea
-                value={editedJobData.terms || ""}
-                onChange={(e) => setEditedJobData({ ...editedJobData, terms: e.target.value })}
-                rows={4}
-                placeholder="Enter terms and conditions"
-              />
-            ) : (
-              <p className="text-gray-700">
-                {editedJobData.terms ||
-                  "This quote is valid for 30 days from the date of issue. Payment terms are net 30 days from invoice date. All work to be completed in a workmanlike manner according to standard practices."}
-              </p>
-            )}
+            <p className="text-gray-700">
+              {jobData.terms ||
+                "This quote is valid for 30 days from the date of issue. Payment terms are net 30 days from invoice date. All work to be completed in a workmanlike manner according to standard practices."}
+            </p>
           </div>
 
           <div className="mt-8 flex justify-between">
             <div>
               <p className="font-bold">Prepared By:</p>
-              <p>{editedContactInfo.name || "___________________"}</p>
+              <p>{jobData.contactInfo?.preparedBy || "___________________"}</p>
+              {jobData.contactInfo?.phone && <p>{jobData.contactInfo.phone}</p>}
+              {jobData.contactInfo?.email && <p>{jobData.contactInfo.email}</p>}
             </div>
             <div>
               <p className="font-bold">Customer Acceptance:</p>

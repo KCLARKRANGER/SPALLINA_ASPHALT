@@ -7,7 +7,7 @@ const isBrowser = () => typeof window !== "undefined"
  * Get the next quote number
  * @returns Next quote number
  */
-export function getNextQuoteNumber(): number {
+export function generateQuoteNumber(): string {
   // Get the current year
   const currentYear = new Date().getFullYear()
 
@@ -23,15 +23,16 @@ export function getNextQuoteNumber(): number {
       if (Number.parseInt(year) === currentYear) {
         const nextNumber = Number.parseInt(number) + 1
         localStorage.setItem("lastQuoteNumber", `${currentYear}-${nextNumber}`)
-        return nextNumber
+        return `${currentYear}-${nextNumber}`
       }
     }
 
     // If the year is different or no last quote number, start from 1001
     localStorage.setItem("lastQuoteNumber", `${currentYear}-1001`)
+    return `${currentYear}-1001`
   }
 
-  return 1001
+  return `${currentYear}-1001`
 }
 
 /**
