@@ -322,8 +322,8 @@ ${jobData.contactInfo?.email || ""}`
                   <p>Phone: (585) 658-2248</p>
                   <p>
                     Email:{" "}
-                    <a href="mailto:info@spallinamaterials.com" className="text-blue-600">
-                      info@spallinamaterials.com
+                    <a href="mailto:dspallina@spallinamaterials.com" className="text-blue-600">
+                      dspallina@spallinamaterials.com
                     </a>
                   </p>
                 </div>

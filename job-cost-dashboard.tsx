@@ -1490,7 +1490,7 @@ export default function JobCostDashboard() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Equipment</TableHead>
-                              <TableHead>Quantity</TableHead>
+                              <TableHead>Days</TableHead>
                               <TableHead>Hours</TableHead>
                               <TableHead>Rate</TableHead>
                               <TableHead>Includes Operator</TableHead>
@@ -1616,7 +1616,7 @@ export default function JobCostDashboard() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Role</TableHead>
-                              <TableHead>Quantity</TableHead>
+                              <TableHead>Days</TableHead>
                               <TableHead>Reg. Hours</TableHead>
                               <TableHead>Rate</TableHead>
                               <TableHead>OT Hours</TableHead>
