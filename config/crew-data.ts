@@ -1,15 +1,15 @@
 // Define crew members with their rates
 export const crewMembers = [
-  { id: "matt", name: "Matt Shay", title: "Foreman", rate: 38, overtimeRate: 57 },
-  { id: "cole", name: "Cole", title: "Operator", rate: 30, overtimeRate: 45 },
-  { id: "bryan", name: "Bryan", title: "Screedman", rate: 28, overtimeRate: 42 },
-  { id: "dean", name: "Dean", title: "Screedman", rate: 29, overtimeRate: 43.5 },
-  { id: "adam", name: "Adam", title: "Operator", rate: 25, overtimeRate: 37.5 },
-  { id: "holden", name: "Holden", title: "Laborer", rate: 24, overtimeRate: 36 },
-  { id: "craig", name: "Craig", title: "Laborer", rate: 20, overtimeRate: 30 },
-  { id: "dustin", name: "Dustin", title: "Operator", rate: 35, overtimeRate: 52.5 },
-  { id: "jordan", name: "Jordan", title: "Operator", rate: 30, overtimeRate: 45 },
-  { id: "jesse", name: "Jesse", title: "Operator", rate: 25, overtimeRate: 37.5 },
+  { id: "matt", name: "Matt Shay", title: "Foreman", rate: 50.54, overtimeRate: 75.81 }, 
+  { id: "cole", name: "Cole", title: "Operator", rate: 39.9, overtimeRate: 59.85 },
+  { id: "bryan", name: "Bryan", title: "Screedman", rate: 37.24, overtimeRate: 55.86 },
+  { id: "dean", name: "Dean", title: "Screedman", rate: 38.57, overtimeRate: 57.86 },
+  { id: "adam", name: "Adam", title: "Operator", rate: 33.25, overtimeRate: 49.88 },
+  { id: "holden", name: "Holden", title: "Laborer", rate: 31.92, overtimeRate: 47.88 },
+  { id: "craig", name: "Craig", title: "Laborer", rate: 26.6, overtimeRate: 39.9 },
+  { id: "dustin", name: "Dustin", title: "Operator", rate: 46.55, overtimeRate: 69.83 },
+  { id: "jordan", name: "Jordan", title: "Operator", rate: 39.9, overtimeRate: 59.85 },
+  { id: "jesse", name: "Jesse", title: "Operator", rate: 33.25, overtimeRate: 49.88 }
 ]
 
 // Get unique job titles from crew members
