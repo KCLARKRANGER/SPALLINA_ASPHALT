@@ -744,11 +744,19 @@ export default function JobCostDashboard() {
       const dataStr = JSON.stringify(jobData, null, 2)
       const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr)
 
-      const exportFileDefaultName = `job-estimate-${jobData.quoteNumber}.json`
+      // Format current date and time for the filename
+      const now = new Date()
+      const timestamp = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}_${now.getHours().toString().padStart(2, "0")}-${now.getMinutes().toString().padStart(2, "0")}`
+
+      // Create filename using project name (or "job-estimate" if no project name) and timestamp
+      const projectName = jobData.projectName
+        ? jobData.projectName.replace(/[^a-z0-9]/gi, "-").toLowerCase()
+        : "job-estimate"
+      const exportFileName = `${projectName}_${timestamp}.json`
 
       const linkElement = document.createElement("a")
       linkElement.setAttribute("href", dataUri)
-      linkElement.setAttribute("download", exportFileDefaultName)
+      linkElement.setAttribute("download", exportFileName)
       linkElement.click()
 
       toast({
