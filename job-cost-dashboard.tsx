@@ -233,24 +233,10 @@ export default function JobCostDashboard() {
 
     const updatedSection = { ...section, [field]: value }
 
-    // Calculate area if we have both length and width
+    // Calculate area if we have both length and width and the user clicks the calculate button
     if (field === "length" || field === "width") {
       if (updatedSection.length && updatedSection.width) {
-        updatedSection.area = updatedSection.length * updatedSection.width
-
-        // Recalculate tonnage for all materials based on the new area
-        if (updatedSection.materials && updatedSection.materials.length > 0) {
-          let totalTons = 0
-          updatedSection.materials = updatedSection.materials.map((material) => {
-            if (material.unit === "tons" && material.thickness) {
-              const tons = calculateTonsFromArea(updatedSection.area, material.thickness)
-              totalTons += tons
-              return { ...material, quantity: tons, total: tons * material.rate }
-            }
-            return material
-          })
-          updatedSection.tons = totalTons
-        }
+        // Don't auto-calculate area, let user do it manually if they want
       }
     }
 
@@ -264,11 +250,13 @@ export default function JobCostDashboard() {
   // Function to recalculate tonnage for a section
   const recalculateTonnage = (sectionId: string) => {
     const section = jobData.sections.find((s) => s.id === sectionId)
-    if (!section || !section.area) {
+    if (!section) return
+
+    if (!section.area) {
       toast({
-        title: "Cannot Calculate Tonnage",
-        description: "Please enter section dimensions first to calculate area.",
-        variant: "destructive",
+        title: "No Area Specified",
+        description: "No area has been specified. Tonnage will be calculated based on manual entries.",
+        variant: "warning",
       })
       return
     }
@@ -295,44 +283,8 @@ export default function JobCostDashboard() {
     })
 
     toast({
-      title: "Tonnage Recalculated",
+      title: "Tonnage Updated",
       description: `Total tonnage for this section: ${totalTons.toFixed(2)} tons`,
-    })
-  }
-
-  // Function to update material item in a section
-  const updateMaterialItem = (sectionId: string, index: number, field: string, value: any) => {
-    const section = jobData.sections.find((s) => s.id === sectionId)
-    if (!section || !section.materials) return
-
-    const updatedMaterials = [...section.materials]
-    updatedMaterials[index] = { ...updatedMaterials[index], [field]: value }
-
-    // Calculate total for this material
-    if (field === "quantity" || field === "rate") {
-      updatedMaterials[index].total = updatedMaterials[index].quantity * updatedMaterials[index].rate
-    }
-
-    // Calculate total tonnage for the section
-    let totalTons = 0
-    updatedMaterials.forEach((material) => {
-      if (material.unit === "tons") {
-        totalTons += Number(material.quantity) || 0
-      }
-    })
-
-    // Update the section
-    setJobData({
-      ...jobData,
-      sections: jobData.sections.map((s) =>
-        s.id === sectionId
-          ? {
-              ...s,
-              materials: updatedMaterials,
-              tons: totalTons,
-            }
-          : s,
-      ),
     })
   }
 
@@ -345,7 +297,6 @@ export default function JobCostDashboard() {
       name: materialTypes.length > 0 ? materialTypes[0].name : "New Material",
       unit: "tons",
       quantity: 0,
-      thickness: 0,
       rate: 85,
       total: 0,
     }
@@ -355,6 +306,34 @@ export default function JobCostDashboard() {
       sections: jobData.sections.map((s) =>
         s.id === sectionId ? { ...s, materials: [...s.materials, newMaterial] } : s,
       ),
+    })
+  }
+
+  // Function to update material item in a section
+  const updateMaterialItem = (sectionId: string, index: number, field: string, value: any) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.materials) return
+
+    // Create a copy of the materials array
+    const updatedMaterials = [...section.materials]
+
+    // Update the specific field
+    updatedMaterials[index] = {
+      ...updatedMaterials[index],
+      [field]: value,
+    }
+
+    // If quantity or rate changed, update the total
+    if (field === "quantity" || field === "rate") {
+      const quantity = updatedMaterials[index].quantity || 0
+      const rate = updatedMaterials[index].rate || 0
+      updatedMaterials[index].total = quantity * rate
+    }
+
+    // Update the section with the new materials array
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, materials: updatedMaterials } : s)),
     })
   }
 
@@ -1281,7 +1260,7 @@ export default function JobCostDashboard() {
                     <CardContent className="p-6 space-y-6">
                       {/* Section Dimensions */}
                       <div className="border rounded-md p-4">
-                        <h3 className="text-lg font-medium mb-4">Section Dimensions</h3>
+                        <h3 className="text-lg font-medium mb-4">Section Dimensions (Optional)</h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
                             <Label htmlFor={`length-${section.id}`}>Length (ft)</Label>
@@ -1780,8 +1759,16 @@ export default function JobCostDashboard() {
                       <p className="text-lg font-bold">${calculateSectionTotal(section).toFixed(2)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium">Area: {section.area?.toFixed(2) || "0.00"} sq ft</p>
-                      <p className="text-sm font-medium">Tonnage: {section.tons?.toFixed(2) || "0.00"} tons</p>
+                      {section.area ? (
+                        <p className="text-sm font-medium">Area: {section.area.toFixed(2)} sq ft</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No area specified</p>
+                      )}
+                      {section.tons ? (
+                        <p className="text-sm font-medium">Tonnage: {section.tons.toFixed(2)} tons</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No tonnage specified</p>
+                      )}
                     </div>
                   </CardFooter>
                 </Card>
