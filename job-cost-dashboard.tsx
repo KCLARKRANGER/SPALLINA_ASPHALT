@@ -1015,26 +1015,145 @@ export default function JobCostDashboard() {
                 </div>
 
                 <div>
-                  <Label htmlFor="markupPercentage">Markup Percentage</Label>
-                  <div className="flex items-center space-x-2">
-                    <Input
-                      id="markupPercentage"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={jobData.markup.equipment}
-                      onChange={(e) =>
-                        setJobData({
-                          ...jobData,
-                          markup: {
-                            ...jobData.markup,
-                            equipment: Number.parseFloat(e.target.value) || 0,
-                          },
-                        })
-                      }
-                      className="w-24"
-                    />
-                    <span>%</span>
+                  <Label className="text-lg font-semibold mb-2 block">Markup Percentages</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md bg-gray-50">
+                    <div>
+                      <Label htmlFor="equipmentMarkup">Equipment Markup</Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="equipmentMarkup"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobData.markup.equipment}
+                          onChange={(e) =>
+                            setJobData({
+                              ...jobData,
+                              markup: {
+                                ...jobData.markup,
+                                equipment: Number.parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="w-24"
+                        />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="laborMarkup">Labor Markup</Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="laborMarkup"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobData.markup.labor}
+                          onChange={(e) =>
+                            setJobData({
+                              ...jobData,
+                              markup: {
+                                ...jobData.markup,
+                                labor: Number.parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="w-24"
+                        />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="materialsMarkup">Materials Markup</Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="materialsMarkup"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobData.markup.materials}
+                          onChange={(e) =>
+                            setJobData({
+                              ...jobData,
+                              markup: {
+                                ...jobData.markup,
+                                materials: Number.parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="w-24"
+                        />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="truckingMarkup">Trucking Markup</Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="truckingMarkup"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobData.markup.trucking}
+                          onChange={(e) =>
+                            setJobData({
+                              ...jobData,
+                              markup: {
+                                ...jobData.markup,
+                                trucking: Number.parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="w-24"
+                        />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="overtimeMarkup">Overtime Markup</Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="overtimeMarkup"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobData.markup.overtime}
+                          onChange={(e) =>
+                            setJobData({
+                              ...jobData,
+                              markup: {
+                                ...jobData.markup,
+                                overtime: Number.parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="w-24"
+                        />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <div className="col-span-full">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const value = window.prompt("Enter markup percentage for all categories:", "15")
+                          const markupValue = Number.parseFloat(value || "15") || 15
+                          setJobData({
+                            ...jobData,
+                            markup: {
+                              equipment: markupValue,
+                              labor: markupValue,
+                              materials: markupValue,
+                              trucking: markupValue,
+                              overtime: markupValue,
+                            },
+                          })
+                        }}
+                      >
+                        Set All Markups
+                      </Button>
+                    </div>
                   </div>
                 </div>
 

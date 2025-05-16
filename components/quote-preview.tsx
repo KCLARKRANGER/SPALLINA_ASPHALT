@@ -861,13 +861,25 @@ ${jobData.contactInfo?.email || ""}`
                 <span className="text-xl font-bold">${calculateFinalQuoteAmount().toFixed(2)}</span>
               </div>
               {viewMode === "internal" && (
-                <div className="mt-2 text-sm text-gray-600">
-                  <p>Base Cost: ${calculateJobTotal().toFixed(2)}</p>
-                  <p>Equipment Markup: {jobData.markup?.equipment || 15}%</p>
-                  <p>Labor Markup: {jobData.markup?.labor || 15}%</p>
-                  <p>Materials Markup: {jobData.markup?.materials || 15}%</p>
-                  <p>Trucking Markup: {jobData.markup?.trucking || 15}%</p>
-                  <p>Overtime Markup: {jobData.markup?.overtime || 15}%</p>
+                <div className="mt-2 text-sm">
+                  <p className="font-medium">Base Cost: ${calculateJobTotal().toFixed(2)}</p>
+                  <div className="grid grid-cols-2 gap-x-4 mt-1">
+                    <p>
+                      <span className="font-medium">Equipment Markup:</span> {jobData.markup?.equipment || 15}%
+                    </p>
+                    <p>
+                      <span className="font-medium">Labor Markup:</span> {jobData.markup?.labor || 15}%
+                    </p>
+                    <p>
+                      <span className="font-medium">Materials Markup:</span> {jobData.markup?.materials || 15}%
+                    </p>
+                    <p>
+                      <span className="font-medium">Trucking Markup:</span> {jobData.markup?.trucking || 15}%
+                    </p>
+                    <p>
+                      <span className="font-medium">Overtime Markup:</span> {jobData.markup?.overtime || 15}%
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
