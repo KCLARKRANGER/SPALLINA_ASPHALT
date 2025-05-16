@@ -119,8 +119,9 @@ ${jobData.contactInfo?.email || ""}`
 
   // Apply markup to a cost based on category
   const applyMarkup = (cost, category) => {
-    const markupPercentage = jobData.markup?.[category] || 15
-    return cost * (1 + markupPercentage / 100)
+    const markupPercentage = jobData.markup?.[category] || 0
+    // If markup is 0, just return the original cost
+    return markupPercentage === 0 ? cost : cost * (1 + markupPercentage / 100)
   }
 
   // Calculate section total with markup applied
@@ -514,7 +515,7 @@ ${jobData.contactInfo?.email || ""}`
                           <span className="font-bold">
                             ${applyMarkup(calculateTotalEquipmentCost(), "equipment").toFixed(2)}
                           </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.equipment || 15}% markup)</span>
+                          <span className="text-xs text-gray-500">({jobData.markup?.equipment || 0}% markup)</span>
                         </>
                       ) : (
                         <>${applyMarkup(calculateTotalEquipmentCost(), "equipment").toFixed(2)}</>
@@ -587,7 +588,7 @@ ${jobData.contactInfo?.email || ""}`
                           <span className="font-bold">
                             ${applyMarkup(calculateTotalLaborCost(), "labor").toFixed(2)}
                           </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.labor || 15}% markup)</span>
+                          <span className="text-xs text-gray-500">({jobData.markup?.labor || 0}% markup)</span>
                         </>
                       ) : (
                         <>${applyMarkup(calculateTotalLaborCost(), "labor").toFixed(2)}</>
@@ -683,7 +684,7 @@ ${jobData.contactInfo?.email || ""}`
                           <span className="font-bold">
                             ${applyMarkup(calculateTotalMaterialsCost(), "materials").toFixed(2)}
                           </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.materials || 15}% markup)</span>
+                          <span className="text-xs text-gray-500">({jobData.markup?.materials || 0}% markup)</span>
                         </>
                       ) : (
                         <>${applyMarkup(calculateTotalMaterialsCost(), "materials").toFixed(2)}</>
@@ -757,7 +758,7 @@ ${jobData.contactInfo?.email || ""}`
                           <span className="font-bold">
                             ${applyMarkup(calculateTotalTruckingCost(), "trucking").toFixed(2)}
                           </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.trucking || 15}% markup)</span>
+                          <span className="text-xs text-gray-500">({jobData.markup?.trucking || 0}% markup)</span>
                         </>
                       ) : (
                         <>${applyMarkup(calculateTotalTruckingCost(), "trucking").toFixed(2)}</>
@@ -865,19 +866,19 @@ ${jobData.contactInfo?.email || ""}`
                   <p className="font-medium">Base Cost: ${calculateJobTotal().toFixed(2)}</p>
                   <div className="grid grid-cols-2 gap-x-4 mt-1">
                     <p>
-                      <span className="font-medium">Equipment Markup:</span> {jobData.markup?.equipment || 15}%
+                      <span className="font-medium">Equipment Markup:</span> {jobData.markup?.equipment || 0}%
                     </p>
                     <p>
-                      <span className="font-medium">Labor Markup:</span> {jobData.markup?.labor || 15}%
+                      <span className="font-medium">Labor Markup:</span> {jobData.markup?.labor || 0}%
                     </p>
                     <p>
-                      <span className="font-medium">Materials Markup:</span> {jobData.markup?.materials || 15}%
+                      <span className="font-medium">Materials Markup:</span> {jobData.markup?.materials || 0}%
                     </p>
                     <p>
-                      <span className="font-medium">Trucking Markup:</span> {jobData.markup?.trucking || 15}%
+                      <span className="font-medium">Trucking Markup:</span> {jobData.markup?.trucking || 0}%
                     </p>
                     <p>
-                      <span className="font-medium">Overtime Markup:</span> {jobData.markup?.overtime || 15}%
+                      <span className="font-medium">Overtime Markup:</span> {jobData.markup?.overtime || 0}%
                     </p>
                   </div>
                 </div>

@@ -46,6 +46,7 @@ import {
 } from "lucide-react"
 import { QuotePreview } from "@/components/quote-preview"
 import { SectionMaterials } from "@/components/section-materials"
+import { MarkupComparison } from "@/components/markup-comparison"
 
 // Import the crew data at the top of the file, after the other imports
 import { crewMembers, getCrewMemberById } from "@/config/crew-data"
@@ -95,6 +96,7 @@ export default function JobCostDashboard() {
   const [editingSectionName, setEditingSectionName] = useState("")
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
   const [showQuotePreview, setShowQuotePreview] = useState(false)
+  const [showMarkupComparison, setShowMarkupComparison] = useState(false)
 
   // Function to add a new section from a template
   const addSectionFromTemplate = (templateName: string) => {
@@ -665,11 +667,18 @@ export default function JobCostDashboard() {
         return sum + section.trucking.reduce((subSum, item) => subSum + (item.total || 0), 0)
       }, 0)
 
-    // Apply markup to each category
-    const equipmentWithMarkup = equipmentTotal * (1 + (jobData.markup?.equipment || 15) / 100)
-    const laborWithMarkup = laborTotal * (1 + (jobData.markup?.labor || 15) / 100)
-    const materialsWithMarkup = materialsTotal * (1 + (jobData.markup?.materials || 15) / 100)
-    const truckingWithMarkup = truckingTotal * (1 + (jobData.markup?.trucking || 15) / 100)
+    // Apply markup to each category, but only if markup percentage is greater than 0
+    const equipmentWithMarkup =
+      jobData.markup?.equipment > 0 ? equipmentTotal * (1 + (jobData.markup?.equipment || 0) / 100) : equipmentTotal
+
+    const laborWithMarkup =
+      jobData.markup?.labor > 0 ? laborTotal * (1 + (jobData.markup?.labor || 0) / 100) : laborTotal
+
+    const materialsWithMarkup =
+      jobData.markup?.materials > 0 ? materialsTotal * (1 + (jobData.markup?.materials || 0) / 100) : materialsTotal
+
+    const truckingWithMarkup =
+      jobData.markup?.trucking > 0 ? truckingTotal * (1 + (jobData.markup?.trucking || 0) / 100) : truckingTotal
 
     return equipmentWithMarkup + laborWithMarkup + materialsWithMarkup + truckingWithMarkup
   }
@@ -1190,6 +1199,10 @@ export default function JobCostDashboard() {
                     <Button onClick={() => setShowQuotePreview(true)}>
                       <FileText className="mr-2 h-4 w-4" />
                       Project Summary
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowMarkupComparison(true)}>
+                      <Calculator className="mr-2 h-4 w-4" />
+                      Markup Calculator
                     </Button>
                     <Button variant="outline" onClick={saveJobData}>
                       <Save className="mr-2 h-4 w-4" />
@@ -2122,6 +2135,11 @@ export default function JobCostDashboard() {
       </Dialog>
 
       <QuotePreview open={showQuotePreview} onOpenChange={setShowQuotePreview} jobData={jobData} />
+      <MarkupComparison
+        open={showMarkupComparison}
+        onOpenChange={setShowMarkupComparison}
+        baseCost={calculateJobTotal()}
+      />
     </div>
   )
 }
