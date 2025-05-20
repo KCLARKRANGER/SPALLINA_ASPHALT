@@ -546,29 +546,30 @@ ${jobData.contactInfo?.email || ""}`
                       </div>
                       {sectionEquipment.items.map((item, itemIdx) => (
                         <p key={`equipment-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "units" : "unit"} @
+                          {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "units" : "unit"}
                           {viewMode === "internal" ? (
                             <>
-                              <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                              {" @ "}
+                              <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
                               {" → "}
                               <span className="font-medium">
                                 ${applyMarkup(Number(item.rate) || 0, "equipment").toFixed(2)}
                               </span>
-                            </>
-                          ) : (
-                            <> ${applyMarkup(Number(item.rate) || 0, "equipment").toFixed(2)}</>
-                          )}
-                          /hr × {item.hours || 0} hrs =
-                          {viewMode === "internal" ? (
-                            <>
-                              <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                              {"/hr × "}
+                              {item.hours || 0}
+                              {" hrs = "}
+                              <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
                               {" → "}
                               <span className="font-medium">
                                 ${applyMarkup(Number(item.total) || 0, "equipment").toFixed(2)}
                               </span>
                             </>
                           ) : (
-                            <> ${applyMarkup(Number(item.total) || 0, "equipment").toFixed(2)}</>
+                            <>
+                              {" × "}
+                              {item.hours || 0}
+                              {" hrs"}
+                            </>
                           )}
                         </p>
                       ))}
@@ -624,46 +625,47 @@ ${jobData.contactInfo?.email || ""}`
 
                         return (
                           <p key={`labor-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                            {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "workers" : "worker"} @
+                            {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "workers" : "worker"}
                             {viewMode === "internal" ? (
                               <>
-                                <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                                {" @ "}
+                                <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
                                 {" → "}
                                 <span className="font-medium">
                                   ${applyMarkup(Number(item.rate) || 0, "labor").toFixed(2)}
                                 </span>
-                              </>
-                            ) : (
-                              <> ${applyMarkup(Number(item.rate) || 0, "labor").toFixed(2)}</>
-                            )}
-                            /hr × {regularHours} hrs
-                            {overtimeHours > 0 && (
-                              <>
-                                {" + "}
-                                <span className="text-orange-500">{overtimeHours} OT hrs</span> @
-                                {viewMode === "internal" ? (
+                                {"/hr × "}
+                                {regularHours}
+                                {" hrs"}
+                                {overtimeHours > 0 && (
                                   <>
+                                    {" + "}
+                                    <span className="text-orange-500">{overtimeHours} OT hrs</span> @
                                     <span className="italic"> ${(Number(item.overtimeRate) || 0).toFixed(2)}</span>
                                     {" → "}
                                     <span className="font-medium">
                                       ${applyMarkup(Number(item.overtimeRate) || 0, "labor").toFixed(2)}
                                     </span>
+                                    /hr
                                   </>
-                                ) : (
-                                  <> ${applyMarkup(Number(item.overtimeRate) || 0, "labor").toFixed(2)}</>
                                 )}
-                                /hr
-                              </>
-                            )}
-                            {" = "}
-                            {viewMode === "internal" ? (
-                              <>
+                                {" = "}
                                 <span className="italic">${totalPay.toFixed(2)}</span>
                                 {" → "}
                                 <span className="font-medium">${applyMarkup(totalPay, "labor").toFixed(2)}</span>
                               </>
                             ) : (
-                              <>${applyMarkup(totalPay, "labor").toFixed(2)}</>
+                              <>
+                                {" × "}
+                                {regularHours}
+                                {" hrs"}
+                                {overtimeHours > 0 && (
+                                  <>
+                                    {" + "}
+                                    <span className="text-orange-500">{overtimeHours} OT hrs</span>
+                                  </>
+                                )}
+                              </>
                             )}
                           </p>
                         )
@@ -716,29 +718,26 @@ ${jobData.contactInfo?.email || ""}`
                       {sectionMaterials.items.map((item, itemIdx) => (
                         <p key={`material-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
                           {item.name}: {item.thickness ? `${item.thickness}" thick, ` : ""}
-                          {item.quantity || 0} {item.unit} @
+                          {item.quantity || 0} {item.unit}
                           {viewMode === "internal" ? (
                             <>
-                              <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                              {" @ "}
+                              <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
                               {" → "}
                               <span className="font-medium">
                                 ${applyMarkup(Number(item.rate) || 0, "materials").toFixed(2)}
                               </span>
-                            </>
-                          ) : (
-                            <> ${applyMarkup(Number(item.rate) || 0, "materials").toFixed(2)}</>
-                          )}
-                          /{item.unit} =
-                          {viewMode === "internal" ? (
-                            <>
-                              <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                              {"/"}
+                              {item.unit}
+                              {" = "}
+                              <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
                               {" → "}
                               <span className="font-medium">
                                 ${applyMarkup(Number(item.total) || 0, "materials").toFixed(2)}
                               </span>
                             </>
                           ) : (
-                            <> ${applyMarkup(Number(item.total) || 0, "materials").toFixed(2)}</>
+                            ""
                           )}
                         </p>
                       ))}
@@ -792,29 +791,30 @@ ${jobData.contactInfo?.email || ""}`
                           return (
                             <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
                               {item.name} ({item.function}): {item.quantity || 0}{" "}
-                              {(item.quantity || 0) > 1 ? "trucks" : "truck"} @
+                              {(item.quantity || 0) > 1 ? "trucks" : "truck"}
                               {viewMode === "internal" ? (
                                 <>
-                                  <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                                  {" @ "}
+                                  <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
                                   {" → "}
                                   <span className="font-medium">
                                     ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}
                                   </span>
-                                </>
-                              ) : (
-                                <> ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}</>
-                              )}
-                              /ton × {item.tons} tons =
-                              {viewMode === "internal" ? (
-                                <>
-                                  <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                                  {"/ton × "}
+                                  {item.tons}
+                                  {" tons = "}
+                                  <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
                                   {" → "}
                                   <span className="font-medium">
                                     ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}
                                   </span>
                                 </>
                               ) : (
-                                <> ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}</>
+                                <>
+                                  {" × "}
+                                  {item.tons}
+                                  {" tons"}
+                                </>
                               )}
                             </p>
                           )
@@ -822,29 +822,30 @@ ${jobData.contactInfo?.email || ""}`
                           return (
                             <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
                               {item.name} ({item.function}): {item.quantity || 0}{" "}
-                              {(item.quantity || 0) > 1 ? "trucks" : "truck"} @
+                              {(item.quantity || 0) > 1 ? "trucks" : "truck"}
                               {viewMode === "internal" ? (
                                 <>
-                                  <span className="italic"> ${(Number(item.rate) || 0).toFixed(2)}</span>
+                                  {" @ "}
+                                  <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
                                   {" → "}
                                   <span className="font-medium">
                                     ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}
                                   </span>
-                                </>
-                              ) : (
-                                <> ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}</>
-                              )}
-                              /hr × {item.hours || 0} hrs =
-                              {viewMode === "internal" ? (
-                                <>
-                                  <span className="italic"> ${(Number(item.total) || 0).toFixed(2)}</span>
+                                  {"/hr × "}
+                                  {item.hours || 0}
+                                  {" hrs = "}
+                                  <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
                                   {" → "}
                                   <span className="font-medium">
                                     ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}
                                   </span>
                                 </>
                               ) : (
-                                <> ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}</>
+                                <>
+                                  {" × "}
+                                  {item.hours || 0}
+                                  {" hrs"}
+                                </>
                               )}
                             </p>
                           )
