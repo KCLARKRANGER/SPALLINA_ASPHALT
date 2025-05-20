@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import type { ChangeEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,7 +25,12 @@ import {
 import { toast } from "@/components/ui/use-toast"
 import { generateQuoteNumber } from "@/utils/quote-number"
 import { calculateTonsFromArea } from "@/utils/asphalt-calculations"
-import { pavingTypes, equipmentList, materialTypes, sectionTemplates } from "@/config/paving-templates"
+import {
+  pavingTypes,
+  equipmentList as defaultEquipmentList,
+  materialTypes as defaultMaterialTypes,
+  sectionTemplates,
+} from "@/config/paving-templates"
 import {
   Save,
   FileText,
@@ -43,13 +48,14 @@ import {
   ChevronDown,
   ChevronUp,
   Calculator,
+  Edit,
 } from "lucide-react"
 import { QuotePreview } from "@/components/quote-preview"
 import { SectionMaterials } from "@/components/section-materials"
 import { MarkupComparison } from "@/components/markup-comparison"
 
 // Import the crew data at the top of the file, after the other imports
-import { crewMembers, getCrewMemberById } from "@/config/crew-data"
+import { crewMembers as defaultCrewMembers } from "@/config/crew-data"
 
 // Trucking function options
 const truckingFunctions = [
@@ -62,6 +68,26 @@ const truckingFunctions = [
 ]
 
 export default function JobCostDashboard() {
+  // State for editable configuration data
+  const [equipmentList, setEquipmentList] = useState(defaultEquipmentList)
+  const [materialTypes, setMaterialTypes] = useState(defaultMaterialTypes)
+  const [crewMembers, setCrewMembers] = useState(defaultCrewMembers)
+
+  // State for editing tables
+  const [editingEquipment, setEditingEquipment] = useState(false)
+  const [editingMaterials, setEditingMaterials] = useState(false)
+  const [editingCrew, setEditingCrew] = useState(false)
+
+  // State for editing individual items
+  const [editingEquipmentItem, setEditingEquipmentItem] = useState<number | null>(null)
+  const [editingMaterialItem, setEditingMaterialItem] = useState<number | null>(null)
+  const [editingCrewItem, setEditingCrewItem] = useState<number | null>(null)
+
+  // Temporary state for editing
+  const [tempEquipmentItem, setTempEquipmentItem] = useState<any>(null)
+  const [tempMaterialItem, setTempMaterialItem] = useState<any>(null)
+  const [tempCrewItem, setTempCrewItem] = useState<any>(null)
+
   // State for job data
   const [jobData, setJobData] = useState({
     quoteNumber: generateQuoteNumber(),
@@ -97,6 +123,176 @@ export default function JobCostDashboard() {
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
   const [showQuotePreview, setShowQuotePreview] = useState(false)
   const [showMarkupComparison, setShowMarkupComparison] = useState(false)
+
+  // Load saved configuration data on initial load
+  useEffect(() => {
+    const savedEquipment = localStorage.getItem("equipmentList")
+    const savedMaterials = localStorage.getItem("materialTypes")
+    const savedCrew = localStorage.getItem("crewMembers")
+
+    if (savedEquipment) {
+      try {
+        setEquipmentList(JSON.parse(savedEquipment))
+      } catch (e) {
+        console.error("Error loading saved equipment list:", e)
+      }
+    }
+
+    if (savedMaterials) {
+      try {
+        setMaterialTypes(JSON.parse(savedMaterials))
+      } catch (e) {
+        console.error("Error loading saved material types:", e)
+      }
+    }
+
+    if (savedCrew) {
+      try {
+        setCrewMembers(JSON.parse(savedCrew))
+      } catch (e) {
+        console.error("Error loading saved crew members:", e)
+      }
+    }
+  }, [])
+
+  // Save configuration data
+  const saveConfigData = () => {
+    localStorage.setItem("equipmentList", JSON.stringify(equipmentList))
+    localStorage.setItem("materialTypes", JSON.stringify(materialTypes))
+    localStorage.setItem("crewMembers", JSON.stringify(crewMembers))
+
+    toast({
+      title: "Configuration Saved",
+      description: "Your equipment, materials, and crew data has been saved.",
+    })
+  }
+
+  // Reset configuration data to defaults
+  const resetConfigData = () => {
+    setEquipmentList(defaultEquipmentList)
+    setMaterialTypes(defaultMaterialTypes)
+    setCrewMembers(defaultCrewMembers)
+
+    localStorage.removeItem("equipmentList")
+    localStorage.removeItem("materialTypes")
+    localStorage.removeItem("crewMembers")
+
+    toast({
+      title: "Configuration Reset",
+      description: "Your equipment, materials, and crew data has been reset to defaults.",
+    })
+  }
+
+  // Equipment editing functions
+  const startEditingEquipmentItem = (index: number) => {
+    setEditingEquipmentItem(index)
+    setTempEquipmentItem({ ...equipmentList[index] })
+  }
+
+  const saveEquipmentItem = () => {
+    if (editingEquipmentItem !== null && tempEquipmentItem) {
+      const newList = [...equipmentList]
+      newList[editingEquipmentItem] = tempEquipmentItem
+      setEquipmentList(newList)
+      setEditingEquipmentItem(null)
+      setTempEquipmentItem(null)
+    }
+  }
+
+  const cancelEditingEquipmentItem = () => {
+    setEditingEquipmentItem(null)
+    setTempEquipmentItem(null)
+  }
+
+  const addNewEquipmentItem = () => {
+    const newItem = {
+      name: "New Equipment",
+      hourlyRate: 0,
+    }
+    setEquipmentList([...equipmentList, newItem])
+    startEditingEquipmentItem(equipmentList.length)
+  }
+
+  const deleteEquipmentItem = (index: number) => {
+    const newList = [...equipmentList]
+    newList.splice(index, 1)
+    setEquipmentList(newList)
+  }
+
+  // Material editing functions
+  const startEditingMaterialItem = (index: number) => {
+    setEditingMaterialItem(index)
+    setTempMaterialItem({ ...materialTypes[index] })
+  }
+
+  const saveMaterialItem = () => {
+    if (editingMaterialItem !== null && tempMaterialItem) {
+      const newList = [...materialTypes]
+      newList[editingMaterialItem] = tempMaterialItem
+      setMaterialTypes(newList)
+      setEditingMaterialItem(null)
+      setTempMaterialItem(null)
+    }
+  }
+
+  const cancelEditingMaterialItem = () => {
+    setEditingMaterialItem(null)
+    setTempMaterialItem(null)
+  }
+
+  const addNewMaterialItem = () => {
+    const newItem = {
+      code: "NEW",
+      name: "New Material",
+    }
+    setMaterialTypes([...materialTypes, newItem])
+    startEditingMaterialItem(materialTypes.length)
+  }
+
+  const deleteMaterialItem = (index: number) => {
+    const newList = [...materialTypes]
+    newList.splice(index, 1)
+    setMaterialTypes(newList)
+  }
+
+  // Crew editing functions
+  const startEditingCrewItem = (index: number) => {
+    setEditingCrewItem(index)
+    setTempCrewItem({ ...crewMembers[index] })
+  }
+
+  const saveCrewItem = () => {
+    if (editingCrewItem !== null && tempCrewItem) {
+      const newList = [...crewMembers]
+      newList[editingCrewItem] = tempCrewItem
+      setCrewMembers(newList)
+      setEditingCrewItem(null)
+      setTempCrewItem(null)
+    }
+  }
+
+  const cancelEditingCrewItem = () => {
+    setEditingCrewItem(null)
+    setTempCrewItem(null)
+  }
+
+  const addNewCrewItem = () => {
+    const newItem = {
+      id: `crew-${Date.now()}`,
+      name: "New Crew Member",
+      title: "Laborer",
+      rate: 0,
+      overtimeRate: 0,
+    }
+    setCrewMembers([...crewMembers, newItem])
+    startEditingCrewItem(crewMembers.length)
+  }
+
+  const deleteCrewItem = (index: number) => {
+    const newList = [...crewMembers]
+    newList.splice(index, 1)
+    setCrewMembers(newList)
+  }
 
   // Function to add a new section from a template
   const addSectionFromTemplate = (templateName: string) => {
@@ -397,7 +593,7 @@ export default function JobCostDashboard() {
     const newEquipment = {
       name: equipmentList.length > 0 ? equipmentList[0].name : "New Equipment",
       quantity: 1,
-      hours: 8,
+      hours: 8, // Default to 8 hours for equipment
       rate: equipmentList.length > 0 ? equipmentList[0].hourlyRate : 0,
       total: equipmentList.length > 0 ? equipmentList[0].hourlyRate * 8 : 0,
       includesOperator: false,
@@ -433,7 +629,7 @@ export default function JobCostDashboard() {
 
     // If selecting a crew member, update all related fields
     if (field === "crewMemberId") {
-      const crewMember = getCrewMemberById(value)
+      const crewMember = crewMembers.find((member) => member.id === value)
       if (crewMember) {
         updatedLabor[index] = {
           ...updatedLabor[index],
@@ -483,11 +679,11 @@ export default function JobCostDashboard() {
       title: "Laborer",
       crewMemberId: "",
       quantity: 1,
-      hours: 8,
+      hours: 10, // Default to 10 hours for labor (changed from 8)
       rate: 20,
-      overtimeHours: 0,
+      overtimeHours: 2, // 2 hours of overtime (10 - 8)
       overtimeRate: 30, // 1.5x regular rate
-      total: 160,
+      total: 200, // 8 regular hours + 2 overtime hours
     }
 
     setJobData({
@@ -688,15 +884,154 @@ export default function JobCostDashboard() {
     try {
       const dataToSave = JSON.stringify(jobData)
       localStorage.setItem("jobData", dataToSave)
+
+      // Also export as JSON file
+      const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataToSave)
+
+      // Format current date for the filename
+      const now = new Date()
+      const dateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`
+
+      // Create filename using project name and date
+      const projectName = jobData.projectName
+        ? jobData.projectName.replace(/[^a-z0-9]/gi, "-").toLowerCase()
+        : "untitled-job"
+
+      const exportFileName = `${projectName}.${dateStr}.json`
+
+      const linkElement = document.createElement("a")
+      linkElement.setAttribute("href", dataUri)
+      linkElement.setAttribute("download", exportFileName)
+      linkElement.click()
+
       toast({
         title: "Job Data Saved",
-        description: "Your job data has been saved locally.",
+        description: "Your job data has been saved locally and exported as a JSON file.",
       })
     } catch (error) {
       console.error("Error saving job data:", error)
       toast({
         title: "Error Saving Data",
         description: "There was an error saving your job data.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to autosave job data to localStorage
+  const autosaveJobData = () => {
+    try {
+      const dataToSave = JSON.stringify(jobData)
+      localStorage.setItem("jobData_autosave", dataToSave)
+
+      // Also save a timestamped version for recovery
+      const timestamp = new Date().toISOString()
+      localStorage.setItem("jobData_autosave_timestamp", timestamp)
+
+      // Optional: Save a JSON file for recovery
+      if (typeof window !== "undefined" && window.navigator && window.navigator.msSaveBlob) {
+        // For IE/Edge browsers
+        const blob = new Blob([dataToSave], { type: "application/json" })
+        window.navigator.msSaveBlob(blob, `${jobData.projectName || "job"}_autosave.json`)
+      } else {
+        // For modern browsers, save to IndexedDB or localStorage only
+        // We don't automatically download files to avoid disrupting the user
+      }
+
+      console.log("Autosave completed:", timestamp)
+    } catch (error) {
+      console.error("Error during autosave:", error)
+    }
+  }
+
+  // Function to check for autosaved data
+  const checkForAutosavedData = () => {
+    try {
+      const autosavedData = localStorage.getItem("jobData_autosave")
+      const timestamp = localStorage.getItem("jobData_autosave_timestamp")
+
+      if (autosavedData && timestamp) {
+        const parsedTimestamp = new Date(timestamp)
+        const timeAgo = Math.round((new Date().getTime() - parsedTimestamp.getTime()) / 60000) // minutes
+
+        // Only offer recovery for recent autosaves (within last 24 hours)
+        if (timeAgo < 1440) {
+          toast({
+            title: "Recover Autosaved Work",
+            description: `We found autosaved work from ${timeAgo} minutes ago. Would you like to recover it?`,
+            action: (
+              <Button
+                onClick={() => {
+                  try {
+                    const parsedData = JSON.parse(autosavedData)
+                    setJobData(parsedData)
+                    toast({
+                      title: "Work Recovered",
+                      description: "Your autosaved work has been successfully loaded.",
+                    })
+                  } catch (error) {
+                    console.error("Error recovering autosaved data:", error)
+                    toast({
+                      title: "Recovery Failed",
+                      description: "There was an error recovering your autosaved work.",
+                      variant: "destructive",
+                    })
+                  }
+                }}
+                variant="outline"
+              >
+                Recover
+              </Button>
+            ),
+            duration: 10000, // Show for 10 seconds
+          })
+        }
+      }
+    } catch (error) {
+      console.error("Error checking for autosaved data:", error)
+    }
+  }
+
+  // Function to export autosaved data as JSON file
+  const exportAutosavedData = () => {
+    try {
+      const autosavedData = localStorage.getItem("jobData_autosave")
+      if (!autosavedData) {
+        toast({
+          title: "No Autosaved Data",
+          description: "There is no autosaved data to export.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(autosavedData)
+
+      // Format current date for the filename
+      const now = new Date()
+      const dateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`
+
+      // Create filename using project name and date
+      const projectName = jobData.projectName
+        ? jobData.projectName.replace(/[^a-z0-9]/gi, "-").toLowerCase()
+        : "recovered-job"
+
+      const exportFileName = `${projectName}.${dateStr}.recovered.json`
+
+      const linkElement = document.createElement("a")
+      linkElement.setAttribute("href", dataUri)
+      linkElement.setAttribute("download", exportFileName)
+      linkElement.click()
+
+      toast({
+        title: "Autosaved Data Exported",
+        description: "Your autosaved data has been exported as a JSON file.",
+      })
+    } catch (error) {
+      console.error("Error exporting autosaved data:", error)
+      toast({
+        title: "Error Exporting Data",
+        description: "There was an error exporting your autosaved data.",
         variant: "destructive",
       })
     }
@@ -741,18 +1076,19 @@ export default function JobCostDashboard() {
   // Function to export job data as JSON file
   const exportJobData = () => {
     try {
-      const dataStr = JSON.stringify(jobData, null, 2)
+      const dataStr = JSON.stringify({ jobData }, null, 2)
       const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr)
 
-      // Format current date and time for the filename
+      // Format current date for the filename
       const now = new Date()
-      const timestamp = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}_${now.getHours().toString().padStart(2, "0")}-${now.getMinutes().toString().padStart(2, "0")}`
+      const dateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`
 
-      // Create filename using project name (or "job-estimate" if no project name) and timestamp
+      // Create filename using project name and date
       const projectName = jobData.projectName
         ? jobData.projectName.replace(/[^a-z0-9]/gi, "-").toLowerCase()
-        : "job-estimate"
-      const exportFileName = `${projectName}_${timestamp}.json`
+        : "untitled-job"
+
+      const exportFileName = `${projectName}.${dateStr}.json`
 
       const linkElement = document.createElement("a")
       linkElement.setAttribute("href", dataUri)
@@ -866,6 +1202,25 @@ export default function JobCostDashboard() {
   React.useEffect(() => {
     calculateTotals()
   }, [jobData.sections, jobData.selectedSections])
+
+  // Set up autosave and check for autosaved data
+  React.useEffect(() => {
+    // Check for autosaved data when the component mounts
+    checkForAutosavedData()
+
+    // Set up autosave interval (every 2 minutes)
+    const autosaveInterval = setInterval(
+      () => {
+        autosaveJobData()
+      },
+      2 * 60 * 1000,
+    ) // 2 minutes in milliseconds
+
+    // Clean up interval on component unmount
+    return () => {
+      clearInterval(autosaveInterval)
+    }
+  }, []) // Empty dependency array means this runs once on mount
 
   return (
     <div className="container mx-auto p-4 max-w-7xl">
@@ -1253,6 +1608,10 @@ export default function JobCostDashboard() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    <Button variant="outline" onClick={exportAutosavedData}>
+                      <FileUp className="mr-2 h-4 w-4" />
+                      Recover Autosave
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -1917,10 +2276,31 @@ export default function JobCostDashboard() {
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-4">
+            {/* Equipment List */}
             <Card>
-              <CardHeader>
-                <CardTitle>Equipment List</CardTitle>
-                <CardDescription>View the equipment list with hourly rates</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Equipment List</CardTitle>
+                  <CardDescription>View and edit equipment with hourly rates</CardDescription>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditingEquipment(!editingEquipment)}>
+                    {editingEquipment ? "Done" : <Edit className="mr-2 h-4 w-4" />}
+                    {editingEquipment ? "Done" : "Edit"}
+                  </Button>
+                  {editingEquipment && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={addNewEquipmentItem}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={saveConfigData}>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save
+                      </Button>
+                    </>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -1928,13 +2308,60 @@ export default function JobCostDashboard() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Hourly Rate</TableHead>
+                      <TableHead>8-Hour Day</TableHead>
+                      {editingEquipment && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {equipmentList.map((item) => (
+                    {equipmentList.map((item, index) => (
                       <TableRow key={item.name}>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>${item.hourlyRate.toFixed(2)}</TableCell>
+                        <TableCell>
+                          {editingEquipmentItem === index ? (
+                            <Input
+                              value={tempEquipmentItem?.name || ""}
+                              onChange={(e) => setTempEquipmentItem({ ...tempEquipmentItem, name: e.target.value })}
+                            />
+                          ) : (
+                            item.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingEquipmentItem === index ? (
+                            <Input
+                              type="number"
+                              value={tempEquipmentItem?.hourlyRate || 0}
+                              onChange={(e) =>
+                                setTempEquipmentItem({ ...tempEquipmentItem, hourlyRate: Number(e.target.value) })
+                              }
+                            />
+                          ) : (
+                            `$${item.hourlyRate.toFixed(2)}`
+                          )}
+                        </TableCell>
+                        <TableCell>${(item.hourlyRate * 8).toFixed(2)}</TableCell>
+                        {editingEquipment && (
+                          <TableCell>
+                            {editingEquipmentItem === index ? (
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={saveEquipmentItem}>
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={cancelEditingEquipmentItem}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={() => startEditingEquipmentItem(index)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteEquipmentItem(index)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1942,10 +2369,31 @@ export default function JobCostDashboard() {
               </CardContent>
             </Card>
 
+            {/* Material Types */}
             <Card>
-              <CardHeader>
-                <CardTitle>Material Types</CardTitle>
-                <CardDescription>View the available material types</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Material Types</CardTitle>
+                  <CardDescription>View and edit available material types</CardDescription>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditingMaterials(!editingMaterials)}>
+                    {editingMaterials ? "Done" : <Edit className="mr-2 h-4 w-4" />}
+                    {editingMaterials ? "Done" : "Edit"}
+                  </Button>
+                  {editingMaterials && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={addNewMaterialItem}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={saveConfigData}>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save
+                      </Button>
+                    </>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -1953,13 +2401,55 @@ export default function JobCostDashboard() {
                     <TableRow>
                       <TableHead>Code</TableHead>
                       <TableHead>Name</TableHead>
+                      {editingMaterials && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {materialTypes.map((item) => (
+                    {materialTypes.map((item, index) => (
                       <TableRow key={item.code}>
-                        <TableCell>{item.code}</TableCell>
-                        <TableCell>{item.name}</TableCell>
+                        <TableCell>
+                          {editingMaterialItem === index ? (
+                            <Input
+                              value={tempMaterialItem?.code || ""}
+                              onChange={(e) => setTempMaterialItem({ ...tempMaterialItem, code: e.target.value })}
+                            />
+                          ) : (
+                            item.code
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingMaterialItem === index ? (
+                            <Input
+                              value={tempMaterialItem?.name || ""}
+                              onChange={(e) => setTempMaterialItem({ ...tempMaterialItem, name: e.target.value })}
+                            />
+                          ) : (
+                            item.name
+                          )}
+                        </TableCell>
+                        {editingMaterials && (
+                          <TableCell>
+                            {editingMaterialItem === index ? (
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={saveMaterialItem}>
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={cancelEditingMaterialItem}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={() => startEditingMaterialItem(index)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteMaterialItem(index)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1967,10 +2457,31 @@ export default function JobCostDashboard() {
               </CardContent>
             </Card>
 
+            {/* Crew Members */}
             <Card>
-              <CardHeader>
-                <CardTitle>Crew Members</CardTitle>
-                <CardDescription>View the crew members and their rates</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Crew Members</CardTitle>
+                  <CardDescription>View and edit crew members and their rates</CardDescription>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditingCrew(!editingCrew)}>
+                    {editingCrew ? "Done" : <Edit className="mr-2 h-4 w-4" />}
+                    {editingCrew ? "Done" : "Edit"}
+                  </Button>
+                  {editingCrew && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={addNewCrewItem}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={saveConfigData}>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save
+                      </Button>
+                    </>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -1980,20 +2491,93 @@ export default function JobCostDashboard() {
                       <TableHead>Title</TableHead>
                       <TableHead>Regular Rate</TableHead>
                       <TableHead>Overtime Rate</TableHead>
+                      <TableHead>10-Hour Day</TableHead>
+                      {editingCrew && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {crewMembers.map((member) => (
+                    {crewMembers.map((member, index) => (
                       <TableRow key={member.id}>
-                        <TableCell>{member.name}</TableCell>
-                        <TableCell>{member.title}</TableCell>
-                        <TableCell>${member.rate.toFixed(2)}</TableCell>
-                        <TableCell>${member.overtimeRate.toFixed(2)}</TableCell>
+                        <TableCell>
+                          {editingCrewItem === index ? (
+                            <Input
+                              value={tempCrewItem?.name || ""}
+                              onChange={(e) => setTempCrewItem({ ...tempCrewItem, name: e.target.value })}
+                            />
+                          ) : (
+                            member.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingCrewItem === index ? (
+                            <Input
+                              value={tempCrewItem?.title || ""}
+                              onChange={(e) => setTempCrewItem({ ...tempCrewItem, title: e.target.value })}
+                            />
+                          ) : (
+                            member.title
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingCrewItem === index ? (
+                            <Input
+                              type="number"
+                              value={tempCrewItem?.rate || 0}
+                              onChange={(e) => setTempCrewItem({ ...tempCrewItem, rate: Number(e.target.value) })}
+                            />
+                          ) : (
+                            `$${member.rate.toFixed(2)}`
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingCrewItem === index ? (
+                            <Input
+                              type="number"
+                              value={tempCrewItem?.overtimeRate || 0}
+                              onChange={(e) =>
+                                setTempCrewItem({ ...tempCrewItem, overtimeRate: Number(e.target.value) })
+                              }
+                            />
+                          ) : (
+                            `$${member.overtimeRate.toFixed(2)}`
+                          )}
+                        </TableCell>
+                        <TableCell>${(member.rate * 8 + member.overtimeRate * 2).toFixed(2)}</TableCell>
+                        {editingCrew && (
+                          <TableCell>
+                            {editingCrewItem === index ? (
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={saveCrewItem}>
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={cancelEditingCrewItem}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={() => startEditingCrewItem(index)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteCrewItem(index)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </CardContent>
+              <CardFooter className="flex justify-end space-x-2">
+                {editingCrew && (
+                  <Button variant="outline" onClick={resetConfigData}>
+                    Reset to Defaults
+                  </Button>
+                )}
+              </CardFooter>
             </Card>
           </TabsContent>
         </Tabs>
