@@ -7,7 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2 } from "lucide-react"
 import { materialTypes } from "../config/paving-templates"
 
-const safeNumber = (val: number | "") => (Number.isNaN(val) ? "" : val)
+const safeValue = (val: any) => {
+  if (val === null || val === undefined || val === "") return ""
+  return val
+}
 
 interface SectionMaterialsProps {
   sectionId: string
@@ -106,17 +109,10 @@ export function SectionMaterials({
                 <Input
                   type="number"
                   step="0.01"
-                  value={safeNumber(item.quantity)}
+                  value={safeValue(item.quantity)}
                   onChange={(e) => {
-                    const raw = e.target.value
-                    // keep '' while typing
-                    updateMaterialItem(sectionId, index, "quantity", raw === "" ? "" : Number(raw))
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "") {
-                      // commit as 0 so we never save ''
-                      updateMaterialItem(sectionId, index, "quantity", 0)
-                    }
+                    const value = e.target.value
+                    updateMaterialItem(sectionId, index, "quantity", value === "" ? 0 : Number(value))
                   }}
                   className="w-24"
                   placeholder="0"
@@ -126,15 +122,10 @@ export function SectionMaterials({
                 <Input
                   type="number"
                   step="0.01"
-                  value={safeNumber(item.rate)}
+                  value={safeValue(item.rate)}
                   onChange={(e) => {
-                    const raw = e.target.value
-                    updateMaterialItem(sectionId, index, "rate", raw === "" ? "" : Number(raw))
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value === "") {
-                      updateMaterialItem(sectionId, index, "rate", 0)
-                    }
+                    const value = e.target.value
+                    updateMaterialItem(sectionId, index, "rate", value === "" ? 0 : Number(value))
                   }}
                   className="w-24"
                   placeholder="0.00"

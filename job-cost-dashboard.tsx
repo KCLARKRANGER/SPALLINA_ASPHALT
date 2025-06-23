@@ -50,9 +50,9 @@ import {
   Calculator,
   Edit,
 } from "lucide-react"
-import { QuotePreview } from "@/components/quote-preview"
 import { SectionMaterials } from "@/components/section-materials"
 import { MarkupComparison } from "@/components/markup-comparison"
+import { QuotePreview } from "@/components/quote-preview"
 
 // Import the crew data at the top of the file, after the other imports
 import { crewMembers as defaultCrewMembers } from "@/config/crew-data"
@@ -129,6 +129,7 @@ export default function JobCostDashboard() {
       trucking: 15,
       overtime: 15,
     },
+    projectMarkup: 0, // Add this new field
     notes: "",
     totalArea: 0,
     totalTonnage: 0,
@@ -556,29 +557,23 @@ export default function JobCostDashboard() {
     const section = jobData.sections.find((s) => s.id === sectionId)
     if (!section || !section.materials) return
 
-    // Create a copy of the materials array
     const updatedMaterials = [...section.materials]
 
-    // Update the specific field
+    // Ensure value is never undefined
+    const safeValue = value === undefined || value === null ? 0 : value
+
     updatedMaterials[index] = {
       ...updatedMaterials[index],
-      [field]: value,
+      [field]: safeValue,
     }
 
     // If quantity or rate changed, update the total
     if (field === "quantity" || field === "rate") {
-      const quantity =
-        typeof updatedMaterials[index].quantity === "string" && updatedMaterials[index].quantity === ""
-          ? 0
-          : Number(updatedMaterials[index].quantity) || 0
-      const rate =
-        typeof updatedMaterials[index].rate === "string" && updatedMaterials[index].rate === ""
-          ? 0
-          : Number(updatedMaterials[index].rate) || 0
+      const quantity = Number(updatedMaterials[index].quantity) || 0
+      const rate = Number(updatedMaterials[index].rate) || 0
       updatedMaterials[index].total = quantity * rate
     }
 
-    // Update the section with the new materials array
     setJobData({
       ...jobData,
       sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, materials: updatedMaterials } : s)),
@@ -633,18 +628,16 @@ export default function JobCostDashboard() {
     if (!section || !section.additionalItems) return
 
     const updatedItems = [...section.additionalItems]
-    updatedItems[index] = { ...updatedItems[index], [field]: value }
+
+    // Ensure value is never undefined
+    const safeValue = value === undefined || value === null ? (field === "description" ? "" : 0) : value
+
+    updatedItems[index] = { ...updatedItems[index], [field]: safeValue }
 
     // Calculate total if quantity or rate changed
     if (field === "quantity" || field === "rate") {
-      const quantity =
-        typeof updatedItems[index].quantity === "string" && updatedItems[index].quantity === ""
-          ? 0
-          : Number(updatedItems[index].quantity) || 0
-      const rate =
-        typeof updatedItems[index].rate === "string" && updatedItems[index].rate === ""
-          ? 0
-          : Number(updatedItems[index].rate) || 0
+      const quantity = Number(updatedItems[index].quantity) || 0
+      const rate = Number(updatedItems[index].rate) || 0
       updatedItems[index].total = quantity * rate
     }
 
@@ -991,7 +984,14 @@ export default function JobCostDashboard() {
         ? additionalItemsTotal * (1 + (jobData.markup?.materials || 0) / 100)
         : additionalItemsTotal
 
-    return equipmentWithMarkup + laborWithMarkup + materialsWithMarkup + truckingWithMarkup + additionalItemsWithMarkup
+    const subtotalWithMarkup =
+      equipmentWithMarkup + laborWithMarkup + materialsWithMarkup + truckingWithMarkup + additionalItemsWithMarkup
+
+    // Apply project markup to the entire subtotal
+    const finalTotal =
+      jobData.projectMarkup > 0 ? subtotalWithMarkup * (1 + jobData.projectMarkup / 100) : subtotalWithMarkup
+
+    return finalTotal
   }
 
   // Function to save job data to localStorage
@@ -1301,6 +1301,7 @@ export default function JobCostDashboard() {
         trucking: 15,
         overtime: 15,
       },
+      projectMarkup: 0,
       notes: "",
       totalArea: 0,
       totalTonnage: 0,
@@ -1619,6 +1620,29 @@ export default function JobCostDashboard() {
                         <span>%</span>
                       </div>
                     </div>
+                    <div>
+                      <Label htmlFor="projectMarkup">Project Markup</Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="projectMarkup"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobData.projectMarkup}
+                          onChange={(e) =>
+                            setJobData({
+                              ...jobData,
+                              projectMarkup: Number.parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="w-24"
+                        />
+                        <span>%</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Additional markup applied to the entire project total
+                      </p>
+                    </div>
                     <div className="col-span-full">
                       <Button
                         variant="outline"
@@ -1635,6 +1659,7 @@ export default function JobCostDashboard() {
                               trucking: markupValue,
                               overtime: markupValue,
                             },
+                            projectMarkup: markupValue,
                           })
                         }}
                       >
