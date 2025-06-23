@@ -130,15 +130,20 @@ ${jobData.contactInfo?.email || ""}`
     const laborTotal = section.labor?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
     const materialsTotal = section.materials?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
     const truckingTotal = section.trucking?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
+    const additionalItemsTotal = (section.additionalItems || []).reduce(
+      (sum, item) => sum + (Number(item.total) || 0),
+      0,
+    )
 
     if (viewMode === "internal") {
-      return equipmentTotal + laborTotal + materialsTotal + truckingTotal
+      return equipmentTotal + laborTotal + materialsTotal + truckingTotal + additionalItemsTotal
     } else {
       return (
         applyMarkup(equipmentTotal, "equipment") +
         applyMarkup(laborTotal, "labor") +
         applyMarkup(materialsTotal, "materials") +
-        applyMarkup(truckingTotal, "trucking")
+        applyMarkup(truckingTotal, "trucking") +
+        applyMarkup(additionalItemsTotal, "materials") // Apply materials markup to additional items
       )
     }
   }
@@ -157,84 +162,18 @@ ${jobData.contactInfo?.email || ""}`
       const laborTotal = calculateTotalLaborCost()
       const materialsTotal = calculateTotalMaterialsCost()
       const truckingTotal = calculateTotalTruckingCost()
+      const additionalItemsTotal = calculateTotalAdditionalItemsCost()
 
       return (
         applyMarkup(equipmentTotal, "equipment") +
         applyMarkup(laborTotal, "labor") +
         applyMarkup(materialsTotal, "materials") +
-        applyMarkup(truckingTotal, "trucking")
+        applyMarkup(truckingTotal, "trucking") +
+        applyMarkup(additionalItemsTotal, "materials")
       )
     } else {
       return calculateJobTotal()
     }
-  }
-
-  // Get all equipment from selected sections
-  const getAllEquipment = () => {
-    const result = []
-
-    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
-      if (section.equipment && section.equipment.length > 0) {
-        result.push({
-          sectionName: section.name,
-          items: section.equipment,
-          total: section.equipment.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
-        })
-      }
-    }
-
-    return result
-  }
-
-  // Get all labor from selected sections
-  const getAllLabor = () => {
-    const result = []
-
-    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
-      if (section.labor && section.labor.length > 0) {
-        result.push({
-          sectionName: section.name,
-          items: section.labor,
-          total: section.labor.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
-        })
-      }
-    }
-
-    return result
-  }
-
-  // Get all materials from selected sections
-  const getAllMaterials = () => {
-    const result = []
-
-    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
-      if (section.materials && section.materials.length > 0) {
-        result.push({
-          sectionName: section.name,
-          items: section.materials,
-          total: section.materials.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
-        })
-      }
-    }
-
-    return result
-  }
-
-  // Get all trucking from selected sections
-  const getAllTrucking = () => {
-    const result = []
-
-    for (const section of jobData.sections.filter((s) => jobData.selectedSections.includes(s.id))) {
-      if (section.trucking && section.trucking.length > 0) {
-        result.push({
-          sectionName: section.name,
-          items: section.trucking,
-          total: section.trucking.reduce((sum, item) => sum + (Number(item.total) || 0), 0),
-        })
-      }
-    }
-
-    return result
   }
 
   // Calculate total equipment cost
@@ -273,647 +212,444 @@ ${jobData.contactInfo?.email || ""}`
       }, 0)
   }
 
+  // Calculate total additional items cost
+  const calculateTotalAdditionalItemsCost = () => {
+    return jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return (
+          sum + ((section.additionalItems || []).reduce((subSum, item) => subSum + (Number(item.total) || 0), 0) || 0)
+        )
+      }, 0)
+  }
+
+  const selectedSections = jobData.sections.filter((section) => jobData.selectedSections.includes(section.id))
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Job Summary</DialogTitle>
-        </DialogHeader>
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex space-x-2">
-            <Button variant="outline" onClick={handlePrint}>
-              <Printer className="mr-2 h-4 w-4" />
-              Print
-            </Button>
-            <Button variant="outline" onClick={handleEmail}>
-              <Mail className="mr-2 h-4 w-4" />
-              Email
-            </Button>
-            <Button variant="outline" onClick={handleExportPDF}>
-              <Download className="mr-2 h-4 w-4" />
-              Save As PDF
-            </Button>
-            <Button variant={viewMode === "internal" ? "default" : "outline"} onClick={() => setViewMode("internal")}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="flex flex-row items-center justify-between">
+          <DialogTitle>Project Summary</DialogTitle>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant={viewMode === "internal" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("internal")}
+            >
               <Eye className="mr-2 h-4 w-4" />
               Internal View
             </Button>
-            <Button variant={viewMode === "customer" ? "default" : "outline"} onClick={() => setViewMode("customer")}>
+            <Button
+              variant={viewMode === "customer" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("customer")}
+            >
               <EyeOff className="mr-2 h-4 w-4" />
               Customer View
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowDetails(!showDetails)}>
+              {showDetails ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+              {showDetails ? "Hide Details" : "Show Details"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrint}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportPDF}>
+              <Download className="mr-2 h-4 w-4" />
+              PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleEmail}>
+              <Mail className="mr-2 h-4 w-4" />
+              Email
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        </DialogHeader>
 
-        <div ref={printRef} className="p-4 bg-white">
-          <div className="flex justify-between items-start mb-6">
-            <div className="flex items-start gap-4">
-              <div className="h-24 w-auto">
-                <img src="/spallina-logo.jpeg" alt="Spallina Materials" className="h-full w-auto object-contain" />
+        <div ref={printRef} className="space-y-6 p-6 bg-white">
+          {/* Header */}
+          <div className="text-center border-b pb-6">
+            <img src="/spallina-logo.jpeg" alt="Spallina Materials" className="mx-auto h-16 mb-4" />
+            <h1 className="text-3xl font-bold text-gray-800">ASPHALT ESTIMATE</h1>
+            <p className="text-lg text-gray-600 mt-2">Professional Paving Services</p>
+          </div>
+
+          {/* Project Information */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">Project Information</h2>
+              <div className="space-y-2">
+                <p>
+                  <span className="font-medium">Quote Number:</span> {formatQuoteNumber(jobData.quoteNumber)}
+                </p>
+                <p>
+                  <span className="font-medium">Date:</span> {new Date(jobData.date).toLocaleDateString()}
+                </p>
+                <p>
+                  <span className="font-medium">Customer:</span> {jobData.customerName}
+                </p>
+                <p>
+                  <span className="font-medium">Project:</span> {jobData.projectName}
+                </p>
+                <p>
+                  <span className="font-medium">Location:</span> {jobData.projectLocation}
+                </p>
               </div>
-              <div>
-                <h1 className="text-3xl font-bold mb-2">Job Cost Estimate</h1>
-                <div className="text-sm">
-                  <p className="font-medium">Spallina Materials</p>
-                  <p>ASPHALT - CONCRETE - STONE - SAND</p>
-                  <p>01 Conlon Ave</p>
-                  <p>Mt Morris, NY 14510</p>
-                  <p>Phone: (585) 658-2248</p>
-                  <p>
-                    Email:{" "}
-                    <a href="mailto:dspallina@spallinamaterials.com" className="text-blue-600">
-                      dspallina@spallinamaterials.com
-                    </a>
-                  </p>
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">Contact Information</h2>
+              <div className="space-y-2">
+                <p>
+                  <span className="font-medium">Prepared By:</span> {jobData.contactInfo?.preparedBy}
+                </p>
+                <p>
+                  <span className="font-medium">Phone:</span> {jobData.contactInfo?.phone}
+                </p>
+                <p>
+                  <span className="font-medium">Email:</span> {jobData.contactInfo?.email}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Project Summary */}
+          <div className="bg-blue-50 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Project Summary</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-sm text-gray-600">Total Area</p>
+                <p className="text-2xl font-bold text-blue-600">{jobData.totalArea?.toLocaleString() || "0"} sq ft</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-600">Total Tonnage</p>
+                <p className="text-2xl font-bold text-blue-600">{jobData.totalTonnage?.toFixed(2) || "0.00"} tons</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-600">Total Estimate</p>
+                <p className="text-3xl font-bold text-green-600">${calculateFinalQuoteAmount().toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section Breakdown */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">Section Breakdown</h2>
+
+            {selectedSections.map((section) => (
+              <div key={section.id} className="border rounded-lg p-6 bg-gray-50">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">{section.name}</h3>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-green-600">
+                      ${calculateSectionTotal(section).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {section.area?.toFixed(2) || "0.00"} sq ft • {section.tons?.toFixed(2) || "0.00"} tons
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="font-medium">Date: {jobData.date || new Date().toLocaleDateString()}</p>
-              <p className="font-medium">
-                Estimate #: {formatQuoteNumber ? formatQuoteNumber(jobData.quoteNumber) : jobData.quoteNumber}
-              </p>
-              {viewMode === "internal" && (
-                <p className="text-xs text-red-600 font-bold mt-2">INTERNAL VIEW - NOT FOR CUSTOMER</p>
-              )}
-            </div>
-          </div>
 
-          <div className="bg-gray-100 p-4 rounded-md mb-6">
-            <h2 className="text-xl font-bold mb-2">Job Information</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p>
-                  <strong>Job Name:</strong> {jobData.projectName || "Untitled Job"}
-                </p>
-                <p>
-                  <strong>Location:</strong> {jobData.projectLocation || "N/A"}
-                </p>
-              </div>
-              <div>
-                <p>
-                  <strong>Date:</strong> {jobData.date || "N/A"}
-                </p>
-                <p>
-                  <strong>Total Area:</strong> {jobData.totalArea ? jobData.totalArea.toLocaleString() : "0"} sq ft
-                </p>
-                <p>
-                  <strong>Total Tonnage:</strong> {jobData.totalTonnage ? jobData.totalTonnage.toLocaleString() : "0"}{" "}
-                  tons
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Job Sections Summary */}
-          {jobData.sections.filter((section) => jobData.selectedSections.includes(section.id)).length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-xl font-bold mb-2">Job Sections</h2>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border p-2 text-left">Section</th>
-                    <th className="border p-2 text-right">Equipment</th>
-                    <th className="border p-2 text-right">Labor</th>
-                    <th className="border p-2 text-right">Materials</th>
-                    <th className="border p-2 text-right">Trucking</th>
-                    <th className="border p-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobData.sections
-                    .filter((section) => jobData.selectedSections.includes(section.id))
-                    .map((section, idx) => {
-                      const equipmentTotal =
-                        section.equipment?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
-                      const laborTotal = section.labor?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
-                      const materialsTotal =
-                        section.materials?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
-                      const truckingTotal =
-                        section.trucking?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0
-
-                      // Calculate marked-up costs
-                      const equipmentTotalWithMarkup = applyMarkup(equipmentTotal, "equipment")
-                      const laborTotalWithMarkup = applyMarkup(laborTotal, "labor")
-                      const materialsTotalWithMarkup = applyMarkup(materialsTotal, "materials")
-                      const truckingTotalWithMarkup = applyMarkup(truckingTotal, "trucking")
-
-                      return (
-                        <tr key={idx} className="border-b">
-                          <td className="border p-2">{section.name}</td>
-                          <td className="border p-2 text-right">
-                            {viewMode === "internal" ? (
-                              <>
-                                <span className="italic text-gray-600">${equipmentTotal?.toFixed(2)}</span>
-                                <br />
-                                <span className="font-bold">${equipmentTotalWithMarkup?.toFixed(2)}</span>
-                              </>
-                            ) : (
-                              <>${equipmentTotalWithMarkup?.toFixed(2)}</>
-                            )}
-                          </td>
-                          <td className="border p-2 text-right">
-                            {viewMode === "internal" ? (
-                              <>
-                                <span className="italic text-gray-600">${laborTotal?.toFixed(2)}</span>
-                                <br />
-                                <span className="font-bold">${laborTotalWithMarkup?.toFixed(2)}</span>
-                              </>
-                            ) : (
-                              <>${laborTotalWithMarkup?.toFixed(2)}</>
-                            )}
-                          </td>
-                          <td className="border p-2 text-right">
-                            {viewMode === "internal" ? (
-                              <>
-                                <span className="italic text-gray-600">${materialsTotal?.toFixed(2)}</span>
-                                <br />
-                                <span className="font-bold">${materialsTotalWithMarkup?.toFixed(2)}</span>
-                              </>
-                            ) : (
-                              <>${materialsTotalWithMarkup?.toFixed(2)}</>
-                            )}
-                          </td>
-                          <td className="border p-2 text-right">
-                            {viewMode === "internal" ? (
-                              <>
-                                <span className="italic text-gray-600">${truckingTotal?.toFixed(2)}</span>
-                                <br />
-                                <span className="font-bold">${truckingTotalWithMarkup?.toFixed(2)}</span>
-                              </>
-                            ) : (
-                              <>${truckingTotalWithMarkup?.toFixed(2)}</>
-                            )}
-                          </td>
-                          <td className="border p-2 text-right font-bold">
-                            {viewMode === "internal" ? (
-                              <>
-                                <span className="italic text-gray-600">
-                                  ${(equipmentTotal + laborTotal + materialsTotal + truckingTotal)?.toFixed(2)}
-                                </span>
-                                <br />
-                                <span className="font-bold">
-                                  $
-                                  {(
-                                    equipmentTotalWithMarkup +
-                                    laborTotalWithMarkup +
-                                    materialsTotalWithMarkup +
-                                    truckingTotalWithMarkup
-                                  )?.toFixed(2)}
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                $
-                                {(
-                                  equipmentTotalWithMarkup +
-                                  laborTotalWithMarkup +
-                                  materialsTotalWithMarkup +
-                                  truckingTotalWithMarkup
-                                )?.toFixed(2)}
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Detailed Cost Breakdown */}
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-xl font-bold">Job Cost Summary</h2>
-              <button className="text-blue-600 flex items-center text-sm" onClick={() => setShowDetails(!showDetails)}>
-                {showDetails ? (
-                  <>
-                    Hide Details <ChevronUp className="ml-1 h-4 w-4" />
-                  </>
-                ) : (
-                  <>
-                    Show Details <ChevronDown className="ml-1 h-4 w-4" />
-                  </>
+                {/* Section Notes */}
+                {section.notes && (
+                  <div className="mb-4 p-3 bg-yellow-50 border-l-4 border-yellow-400">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">Notes:</span> {section.notes}
+                    </p>
+                  </div>
                 )}
-              </button>
-            </div>
 
-            {showDetails && (
-              <>
-                {/* Equipment Cost Breakdown */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-semibold">Equipment Cost (Selected Sections):</h3>
-                    <span className="font-semibold">
-                      {viewMode === "internal" ? (
-                        <>
-                          <span className="italic text-gray-600">${calculateTotalEquipmentCost().toFixed(2)}</span>
-                          {" → "}
-                          <span className="font-bold">
-                            ${applyMarkup(calculateTotalEquipmentCost(), "equipment").toFixed(2)}
-                          </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.equipment || 0}% markup)</span>
-                        </>
-                      ) : (
-                        <>${applyMarkup(calculateTotalEquipmentCost(), "equipment").toFixed(2)}</>
-                      )}
-                    </span>
-                  </div>
-
-                  {getAllEquipment().map((sectionEquipment, idx) => (
-                    <div key={`equipment-${idx}`} className="ml-4 mt-2">
-                      <div className="flex items-center">
-                        <div className="w-4 h-4 bg-blue-500 rounded-sm mr-2 flex items-center justify-center text-white text-xs">
-                          ✓
+                {showDetails && (
+                  <div className="space-y-4">
+                    {/* Materials */}
+                    {section.materials && section.materials.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Materials</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2">Material</th>
+                                <th className="text-right py-2">Quantity</th>
+                                <th className="text-right py-2">Unit</th>
+                                <th className="text-right py-2">Rate</th>
+                                <th className="text-right py-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {section.materials.map((material, index) => (
+                                <tr key={index} className="border-b">
+                                  <td className="py-1">{material.name}</td>
+                                  <td className="text-right py-1">{material.quantity?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1">{material.unit}</td>
+                                  <td className="text-right py-1">${material.rate?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1 font-medium">
+                                    $
+                                    {viewMode === "customer"
+                                      ? applyMarkup(material.total || 0, "materials").toFixed(2)
+                                      : (material.total || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                        <span className="font-medium">
-                          {sectionEquipment.sectionName} -
-                          {viewMode === "internal" ? (
-                            <>
-                              <span className="italic text-gray-600"> ${sectionEquipment.total.toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-bold">
-                                ${applyMarkup(sectionEquipment.total, "equipment").toFixed(2)}
-                              </span>
-                            </>
-                          ) : (
-                            <> ${applyMarkup(sectionEquipment.total, "equipment").toFixed(2)}</>
-                          )}
-                        </span>
                       </div>
-                      {sectionEquipment.items.map((item, itemIdx) => (
-                        <p key={`equipment-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "units" : "unit"}
-                          {viewMode === "internal" ? (
-                            <>
-                              {" @ "}
-                              <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-medium">
-                                ${applyMarkup(Number(item.rate) || 0, "equipment").toFixed(2)}
-                              </span>
-                              {"/hr × "}
-                              {item.hours || 0}
-                              {" hrs = "}
-                              <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-medium">
-                                ${applyMarkup(Number(item.total) || 0, "equipment").toFixed(2)}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              {" × "}
-                              {item.hours || 0}
-                              {" hrs"}
-                            </>
-                          )}
-                        </p>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                    )}
 
-                {/* Labor Cost Breakdown */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-semibold">Labor Cost (Selected Sections):</h3>
-                    <span className="font-semibold">
-                      {viewMode === "internal" ? (
-                        <>
-                          <span className="italic text-gray-600">${calculateTotalLaborCost().toFixed(2)}</span>
-                          {" → "}
-                          <span className="font-bold">
-                            ${applyMarkup(calculateTotalLaborCost(), "labor").toFixed(2)}
-                          </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.labor || 0}% markup)</span>
-                        </>
-                      ) : (
-                        <>${applyMarkup(calculateTotalLaborCost(), "labor").toFixed(2)}</>
-                      )}
-                    </span>
-                  </div>
-
-                  {getAllLabor().map((sectionLabor, idx) => (
-                    <div key={`labor-${idx}`} className="ml-4 mt-2">
-                      <div className="flex items-center">
-                        <div className="w-4 h-4 bg-blue-500 rounded-sm mr-2 flex items-center justify-center text-white text-xs">
-                          ✓
+                    {/* Equipment */}
+                    {section.equipment && section.equipment.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Equipment</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2">Equipment</th>
+                                <th className="text-right py-2">Days</th>
+                                <th className="text-right py-2">Hours</th>
+                                <th className="text-right py-2">Rate</th>
+                                <th className="text-right py-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {section.equipment.map((equipment, index) => (
+                                <tr key={index} className="border-b">
+                                  <td className="py-1">{equipment.name}</td>
+                                  <td className="text-right py-1">{equipment.quantity}</td>
+                                  <td className="text-right py-1">{equipment.hours}</td>
+                                  <td className="text-right py-1">${equipment.rate?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1 font-medium">
+                                    $
+                                    {viewMode === "customer"
+                                      ? applyMarkup(equipment.total || 0, "equipment").toFixed(2)
+                                      : (equipment.total || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                        <span className="font-medium">
-                          {sectionLabor.sectionName} -
-                          {viewMode === "internal" ? (
-                            <>
-                              <span className="italic text-gray-600"> ${sectionLabor.total.toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-bold">${applyMarkup(sectionLabor.total, "labor").toFixed(2)}</span>
-                            </>
-                          ) : (
-                            <> ${applyMarkup(sectionLabor.total, "labor").toFixed(2)}</>
-                          )}
-                        </span>
                       </div>
-                      {sectionLabor.items.map((item, itemIdx) => {
-                        const regularHours = Math.min(item.hours || 0, 8)
-                        const overtimeHours = Math.max((item.hours || 0) - 8, 0)
-                        const regularPay = (item.quantity || 0) * regularHours * (Number(item.rate) || 0)
-                        const overtimePay = (item.quantity || 0) * overtimeHours * (Number(item.overtimeRate) || 0)
-                        const totalPay = regularPay + overtimePay
+                    )}
 
-                        return (
-                          <p key={`labor-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                            {item.name}: {item.quantity || 0} {(item.quantity || 0) > 1 ? "workers" : "worker"}
-                            {viewMode === "internal" ? (
-                              <>
-                                {" @ "}
-                                <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
-                                {" → "}
-                                <span className="font-medium">
-                                  ${applyMarkup(Number(item.rate) || 0, "labor").toFixed(2)}
-                                </span>
-                                {"/hr × "}
-                                {regularHours}
-                                {" hrs"}
-                                {overtimeHours > 0 && (
-                                  <>
-                                    {" + "}
-                                    <span className="text-orange-500">{overtimeHours} OT hrs</span> @
-                                    <span className="italic"> ${(Number(item.overtimeRate) || 0).toFixed(2)}</span>
-                                    {" → "}
-                                    <span className="font-medium">
-                                      ${applyMarkup(Number(item.overtimeRate) || 0, "labor").toFixed(2)}
-                                    </span>
-                                    /hr
-                                  </>
-                                )}
-                                {" = "}
-                                <span className="italic">${totalPay.toFixed(2)}</span>
-                                {" → "}
-                                <span className="font-medium">${applyMarkup(totalPay, "labor").toFixed(2)}</span>
-                              </>
-                            ) : (
-                              <>
-                                {" × "}
-                                {regularHours}
-                                {" hrs"}
-                                {overtimeHours > 0 && (
-                                  <>
-                                    {" + "}
-                                    <span className="text-orange-500">{overtimeHours} OT hrs</span>
-                                  </>
-                                )}
-                              </>
-                            )}
-                          </p>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Materials Cost Breakdown */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-semibold">Materials Cost:</h3>
-                    <span className="font-semibold">
-                      {viewMode === "internal" ? (
-                        <>
-                          <span className="italic text-gray-600">${calculateTotalMaterialsCost().toFixed(2)}</span>
-                          {" → "}
-                          <span className="font-bold">
-                            ${applyMarkup(calculateTotalMaterialsCost(), "materials").toFixed(2)}
-                          </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.materials || 0}% markup)</span>
-                        </>
-                      ) : (
-                        <>${applyMarkup(calculateTotalMaterialsCost(), "materials").toFixed(2)}</>
-                      )}
-                    </span>
-                  </div>
-
-                  {getAllMaterials().map((sectionMaterials, idx) => (
-                    <div key={`materials-${idx}`} className="ml-4 mt-2">
-                      <div className="flex items-center">
-                        <div className="w-4 h-4 bg-blue-500 rounded-sm mr-2 flex items-center justify-center text-white text-xs">
-                          ✓
+                    {/* Labor */}
+                    {section.labor && section.labor.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Labor</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2">Role</th>
+                                <th className="text-right py-2">Days</th>
+                                <th className="text-right py-2">Hours</th>
+                                <th className="text-right py-2">Rate</th>
+                                <th className="text-right py-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {section.labor.map((labor, index) => (
+                                <tr key={index} className="border-b">
+                                  <td className="py-1">
+                                    {labor.name} ({labor.title})
+                                  </td>
+                                  <td className="text-right py-1">{labor.quantity}</td>
+                                  <td className="text-right py-1">{labor.hours}</td>
+                                  <td className="text-right py-1">${labor.rate?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1 font-medium">
+                                    $
+                                    {viewMode === "customer"
+                                      ? applyMarkup(labor.total || 0, "labor").toFixed(2)
+                                      : (labor.total || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                        <span className="font-medium">
-                          {sectionMaterials.sectionName} -
-                          {viewMode === "internal" ? (
-                            <>
-                              <span className="italic text-gray-600"> ${sectionMaterials.total.toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-bold">
-                                ${applyMarkup(sectionMaterials.total, "materials").toFixed(2)}
-                              </span>
-                            </>
-                          ) : (
-                            <> ${applyMarkup(sectionMaterials.total, "materials").toFixed(2)}</>
-                          )}
-                        </span>
                       </div>
-                      {sectionMaterials.items.map((item, itemIdx) => (
-                        <p key={`material-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                          {item.name}: {item.thickness ? `${item.thickness}" thick, ` : ""}
-                          {item.quantity || 0} {item.unit}
-                          {viewMode === "internal" ? (
-                            <>
-                              {" @ "}
-                              <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-medium">
-                                ${applyMarkup(Number(item.rate) || 0, "materials").toFixed(2)}
-                              </span>
-                              {"/"}
-                              {item.unit}
-                              {" = "}
-                              <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-medium">
-                                ${applyMarkup(Number(item.total) || 0, "materials").toFixed(2)}
-                              </span>
-                            </>
-                          ) : (
-                            ""
-                          )}
-                        </p>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                    )}
 
-                {/* Trucking Cost Breakdown */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-semibold">Trucking Cost:</h3>
-                    <span className="font-semibold">
-                      {viewMode === "internal" ? (
-                        <>
-                          <span className="italic text-gray-600">${calculateTotalTruckingCost().toFixed(2)}</span>
-                          {" → "}
-                          <span className="font-bold">
-                            ${applyMarkup(calculateTotalTruckingCost(), "trucking").toFixed(2)}
-                          </span>{" "}
-                          <span className="text-xs text-gray-500">({jobData.markup?.trucking || 0}% markup)</span>
-                        </>
-                      ) : (
-                        <>${applyMarkup(calculateTotalTruckingCost(), "trucking").toFixed(2)}</>
-                      )}
-                    </span>
-                  </div>
-
-                  {getAllTrucking().map((sectionTrucking, idx) => (
-                    <div key={`trucking-${idx}`} className="ml-4 mt-2">
-                      <div className="flex items-center">
-                        <div className="w-4 h-4 bg-blue-500 rounded-sm mr-2 flex items-center justify-center text-white text-xs">
-                          ✓
+                    {/* Trucking */}
+                    {section.trucking && section.trucking.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Trucking</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2">Type</th>
+                                <th className="text-left py-2">Function</th>
+                                <th className="text-right py-2">Quantity</th>
+                                <th className="text-right py-2">Rate</th>
+                                <th className="text-right py-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {section.trucking.map((trucking, index) => (
+                                <tr key={index} className="border-b">
+                                  <td className="py-1">{trucking.name}</td>
+                                  <td className="py-1">{trucking.function}</td>
+                                  <td className="text-right py-1">
+                                    {trucking.quantity} ×{" "}
+                                    {trucking.pricingType === "per-hour"
+                                      ? `${trucking.hours} hrs`
+                                      : `${trucking.tons} tons`}
+                                  </td>
+                                  <td className="text-right py-1">${trucking.rate?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1 font-medium">
+                                    $
+                                    {viewMode === "customer"
+                                      ? applyMarkup(trucking.total || 0, "trucking").toFixed(2)
+                                      : (trucking.total || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                        <span className="font-medium">
-                          {sectionTrucking.sectionName} -
-                          {viewMode === "internal" ? (
-                            <>
-                              <span className="italic text-gray-600"> ${sectionTrucking.total.toFixed(2)}</span>
-                              {" → "}
-                              <span className="font-bold">
-                                ${applyMarkup(sectionTrucking.total, "trucking").toFixed(2)}
-                              </span>
-                            </>
-                          ) : (
-                            <> ${applyMarkup(sectionTrucking.total, "trucking").toFixed(2)}</>
-                          )}
-                        </span>
                       </div>
-                      {sectionTrucking.items.map((item, itemIdx) => {
-                        if (item.pricingType === "per-ton") {
-                          return (
-                            <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                              {item.name} ({item.function}): {item.quantity || 0}{" "}
-                              {(item.quantity || 0) > 1 ? "trucks" : "truck"}
-                              {viewMode === "internal" ? (
-                                <>
-                                  {" @ "}
-                                  <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
-                                  {" → "}
-                                  <span className="font-medium">
-                                    ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}
-                                  </span>
-                                  {"/ton × "}
-                                  {item.tons}
-                                  {" tons = "}
-                                  <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
-                                  {" → "}
-                                  <span className="font-medium">
-                                    ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  {" × "}
-                                  {item.tons}
-                                  {" tons"}
-                                </>
-                              )}
-                            </p>
-                          )
-                        } else {
-                          return (
-                            <p key={`trucking-item-${idx}-${itemIdx}`} className="ml-6 text-gray-600 italic">
-                              {item.name} ({item.function}): {item.quantity || 0}{" "}
-                              {(item.quantity || 0) > 1 ? "trucks" : "truck"}
-                              {viewMode === "internal" ? (
-                                <>
-                                  {" @ "}
-                                  <span className="italic">${(Number(item.rate) || 0).toFixed(2)}</span>
-                                  {" → "}
-                                  <span className="font-medium">
-                                    ${applyMarkup(Number(item.rate) || 0, "trucking").toFixed(2)}
-                                  </span>
-                                  {"/hr × "}
-                                  {item.hours || 0}
-                                  {" hrs = "}
-                                  <span className="italic">${(Number(item.total) || 0).toFixed(2)}</span>
-                                  {" → "}
-                                  <span className="font-medium">
-                                    ${applyMarkup(Number(item.total) || 0, "trucking").toFixed(2)}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  {" × "}
-                                  {item.hours || 0}
-                                  {" hrs"}
-                                </>
-                              )}
-                            </p>
-                          )
-                        }
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+                    )}
 
-            <div className="mt-4 p-4 bg-gray-100 rounded-md">
-              <div className="flex justify-between items-center">
-                <span className="text-xl font-medium">Total Job Cost:</span>
-                <span className="text-xl font-bold">${calculateFinalQuoteAmount().toFixed(2)}</span>
+                    {/* Additional Items */}
+                    {section.additionalItems && section.additionalItems.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Additional Items</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2">Description</th>
+                                <th className="text-right py-2">Quantity</th>
+                                <th className="text-right py-2">Unit</th>
+                                <th className="text-right py-2">Rate</th>
+                                <th className="text-right py-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {section.additionalItems.map((item, index) => (
+                                <tr key={index} className="border-b">
+                                  <td className="py-1">{item.description}</td>
+                                  <td className="text-right py-1">{item.quantity?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1">{item.unit}</td>
+                                  <td className="text-right py-1">${item.rate?.toFixed(2) || "0.00"}</td>
+                                  <td className="text-right py-1 font-medium">
+                                    $
+                                    {viewMode === "customer"
+                                      ? applyMarkup(item.total || 0, "materials").toFixed(2)
+                                      : (item.total || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {viewMode === "internal" && (
-                <div className="mt-2 text-sm">
-                  <p className="font-medium">Base Cost: ${calculateJobTotal().toFixed(2)}</p>
-                  <div className="grid grid-cols-2 gap-x-4 mt-1">
-                    <p>
-                      <span className="font-medium">Equipment Markup:</span> {jobData.markup?.equipment || 0}%
-                    </p>
-                    <p>
-                      <span className="font-medium">Labor Markup:</span> {jobData.markup?.labor || 0}%
-                    </p>
-                    <p>
-                      <span className="font-medium">Materials Markup:</span> {jobData.markup?.materials || 0}%
-                    </p>
-                    <p>
-                      <span className="font-medium">Trucking Markup:</span> {jobData.markup?.trucking || 0}%
-                    </p>
-                    <p>
-                      <span className="font-medium">Overtime Markup:</span> {jobData.markup?.overtime || 0}%
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+            ))}
           </div>
 
-          {jobData.notes && (
-            <div className="mt-6">
-              <h3 className="text-lg font-bold mb-2">Notes</h3>
-              <p className="text-gray-700">{jobData.notes}</p>
+          {/* Cost Summary */}
+          {viewMode === "internal" && (
+            <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Cost Breakdown (Internal)</h2>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Equipment Cost:</span>
+                  <span>${calculateTotalEquipmentCost().toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Labor Cost:</span>
+                  <span>${calculateTotalLaborCost().toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Materials Cost:</span>
+                  <span>${calculateTotalMaterialsCost().toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Trucking Cost:</span>
+                  <span>${calculateTotalTruckingCost().toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Additional Items Cost:</span>
+                  <span>${calculateTotalAdditionalItemsCost().toFixed(2)}</span>
+                </div>
+                <hr className="my-2" />
+                <div className="flex justify-between font-medium">
+                  <span>Subtotal (Base Cost):</span>
+                  <span>${calculateJobTotal().toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Equipment Markup ({jobData.markup?.equipment || 0}%):</span>
+                  <span>
+                    $
+                    {(applyMarkup(calculateTotalEquipmentCost(), "equipment") - calculateTotalEquipmentCost()).toFixed(
+                      2,
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Labor Markup ({jobData.markup?.labor || 0}%):</span>
+                  <span>
+                    ${(applyMarkup(calculateTotalLaborCost(), "labor") - calculateTotalLaborCost()).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Materials Markup ({jobData.markup?.materials || 0}%):</span>
+                  <span>
+                    $
+                    {(applyMarkup(calculateTotalMaterialsCost(), "materials") - calculateTotalMaterialsCost()).toFixed(
+                      2,
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Trucking Markup ({jobData.markup?.trucking || 0}%):</span>
+                  <span>
+                    ${(applyMarkup(calculateTotalTruckingCost(), "trucking") - calculateTotalTruckingCost()).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Additional Items Markup ({jobData.markup?.materials || 0}%):</span>
+                  <span>
+                    $
+                    {(
+                      applyMarkup(calculateTotalAdditionalItemsCost(), "materials") -
+                      calculateTotalAdditionalItemsCost()
+                    ).toFixed(2)}
+                  </span>
+                </div>
+                <hr className="my-2" />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total with Markup:</span>
+                  <span>${calculateFinalQuoteAmount().toFixed(2)}</span>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="mt-8 border-t pt-4">
-            <h3 className="text-lg font-bold mb-2">Terms & Conditions</h3>
-            <p className="text-gray-700">
-              {jobData.terms ||
-                "This quote is valid for 30 days from the date of issue. Payment terms are net 30 days from invoice date. All work to be completed in a workmanlike manner according to standard practices."}
-            </p>
-          </div>
+          {/* Project Notes */}
+          {jobData.notes && (
+            <div className="bg-yellow-50 p-6 rounded-lg border-l-4 border-yellow-400">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Project Notes</h2>
+              <div className="whitespace-pre-wrap text-gray-700">{jobData.notes}</div>
+            </div>
+          )}
 
-          <div className="mt-8 flex justify-between">
-            <div>
-              <p className="font-bold">Prepared By:</p>
-              <p>{jobData.contactInfo?.preparedBy || "___________________"}</p>
-              {jobData.contactInfo?.phone && <p>{jobData.contactInfo.phone}</p>}
-              {jobData.contactInfo?.email && <p>{jobData.contactInfo.email}</p>}
-            </div>
-            <div>
-              <p className="font-bold">Customer Acceptance:</p>
-              <div className="mt-4 border-b border-black w-48"></div>
-              <p className="mt-1 text-sm">Signature & Date</p>
-            </div>
+          {/* Footer */}
+          <div className="text-center text-sm text-gray-600 border-t pt-6">
+            <p>This estimate is valid for 30 days from the date of issue.</p>
+            <p>All work will be performed in accordance with industry standards and local regulations.</p>
+            <p className="mt-2">
+              <strong>Spallina Materials</strong> • Professional Asphalt Services
+            </p>
           </div>
         </div>
       </DialogContent>

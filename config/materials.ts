@@ -14,4 +14,9 @@ export const defaultMaterials = [
   { id: "TYP6", name: "TYPE 6 TOP", pricePerTon: 82.0 },
   { id: "TYP7", name: "TYPE 7 TOP", pricePerTon: 84.0 },
   { id: "MX08", name: "#1 DENSE BINDER", pricePerTon: 78.0 },
+  { id: "NYSDOT TYPE 2 SubBase", name: "TYPE 2 SubBase", pricePerTon: 29.95},
+   { id: "Aggregate (SEE DESCRIPTION)", name: " Quoted Aggregate", pricePerTon: 20.0},
+     { id: "Crushed Stone", name: " Crushed Stone", pricePerTon:},
+       { id: "Millings", name: "Miilings", pricePerTon:},
+
 ]

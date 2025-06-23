@@ -65,6 +65,26 @@ const truckingFunctions = [
   "Hauling Tonnage",
   "General Hauling",
   "Material Delivery",
+  "Material Desposal",
+]
+
+// Additional item units
+const additionalItemUnits = [
+  "each",
+  "hours",
+  "days",
+  "tons",
+  "yards",
+  "gallons",
+  "lbs",
+  "sqft",
+  "linft",
+  "bags",
+  "loads",
+  "trips",
+  "permits",
+  "inspections",
+  "lump sum",
 ]
 
 export default function JobCostDashboard() {
@@ -332,6 +352,7 @@ export default function JobCostDashboard() {
       labor: [...template.labor],
       materials: processedMaterials,
       trucking: [...template.trucking],
+      additionalItems: [], // New field for additional items
       notes: "",
     }
 
@@ -497,6 +518,29 @@ export default function JobCostDashboard() {
       quantity: 0,
       rate: 85,
       total: 0,
+      isCustom: false, // Flag to indicate this is from the dropdown list
+    }
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId ? { ...s, materials: [...s.materials, newMaterial] } : s,
+      ),
+    })
+  }
+
+  // Add this new function after the existing addMaterialItem function:
+  const addCustomMaterialItem = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const newMaterial = {
+      name: "",
+      unit: "each",
+      quantity: 0,
+      rate: 0,
+      total: 0,
+      isCustom: true, // Flag to indicate this is a custom material
     }
 
     setJobData({
@@ -523,8 +567,14 @@ export default function JobCostDashboard() {
 
     // If quantity or rate changed, update the total
     if (field === "quantity" || field === "rate") {
-      const quantity = updatedMaterials[index].quantity || 0
-      const rate = updatedMaterials[index].rate || 0
+      const quantity =
+        typeof updatedMaterials[index].quantity === "string" && updatedMaterials[index].quantity === ""
+          ? 0
+          : Number(updatedMaterials[index].quantity) || 0
+      const rate =
+        typeof updatedMaterials[index].rate === "string" && updatedMaterials[index].rate === ""
+          ? 0
+          : Number(updatedMaterials[index].rate) || 0
       updatedMaterials[index].total = quantity * rate
     }
 
@@ -542,14 +592,6 @@ export default function JobCostDashboard() {
 
     const updatedMaterials = section.materials.filter((_, i) => i !== index)
 
-    // Recalculate total tonnage
-    let totalTons = 0
-    updatedMaterials.forEach((material) => {
-      if (material.unit === "tons") {
-        totalTons += Number(material.quantity) || 0
-      }
-    })
-
     setJobData({
       ...jobData,
       sections: jobData.sections.map((s) =>
@@ -557,10 +599,70 @@ export default function JobCostDashboard() {
           ? {
               ...s,
               materials: updatedMaterials,
-              tons: totalTons,
             }
           : s,
       ),
+    })
+  }
+
+  // Additional Items functions
+  const addAdditionalItem = (sectionId: string) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const newItem = {
+      description: "",
+      unit: "each",
+      quantity: 0,
+      rate: 0,
+      total: 0,
+    }
+
+    const updatedAdditionalItems = [...(section.additionalItems || []), newItem]
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) =>
+        s.id === sectionId ? { ...s, additionalItems: updatedAdditionalItems } : s,
+      ),
+    })
+  }
+
+  const updateAdditionalItem = (sectionId: string, index: number, field: string, value: any) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.additionalItems) return
+
+    const updatedItems = [...section.additionalItems]
+    updatedItems[index] = { ...updatedItems[index], [field]: value }
+
+    // Calculate total if quantity or rate changed
+    if (field === "quantity" || field === "rate") {
+      const quantity =
+        typeof updatedItems[index].quantity === "string" && updatedItems[index].quantity === ""
+          ? 0
+          : Number(updatedItems[index].quantity) || 0
+      const rate =
+        typeof updatedItems[index].rate === "string" && updatedItems[index].rate === ""
+          ? 0
+          : Number(updatedItems[index].rate) || 0
+      updatedItems[index].total = quantity * rate
+    }
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, additionalItems: updatedItems } : s)),
+    })
+  }
+
+  const removeAdditionalItem = (sectionId: string, index: number) => {
+    const section = jobData.sections.find((s) => s.id === sectionId)
+    if (!section || !section.additionalItems) return
+
+    const updatedItems = section.additionalItems.filter((_, i) => i !== index)
+
+    setJobData({
+      ...jobData,
+      sections: jobData.sections.map((s) => (s.id === sectionId ? { ...s, additionalItems: updatedItems } : s)),
     })
   }
 
@@ -826,8 +928,9 @@ export default function JobCostDashboard() {
     const laborTotal = section.labor.reduce((sum, item) => sum + (item.total || 0), 0)
     const materialsTotal = section.materials.reduce((sum, item) => sum + (item.total || 0), 0)
     const truckingTotal = section.trucking.reduce((sum, item) => sum + (item.total || 0), 0)
+    const additionalItemsTotal = (section.additionalItems || []).reduce((sum, item) => sum + (item.total || 0), 0)
 
-    return equipmentTotal + laborTotal + materialsTotal + truckingTotal
+    return equipmentTotal + laborTotal + materialsTotal + truckingTotal + additionalItemsTotal
   }
 
   // Function to calculate job total
@@ -863,6 +966,12 @@ export default function JobCostDashboard() {
         return sum + section.trucking.reduce((subSum, item) => subSum + (item.total || 0), 0)
       }, 0)
 
+    const additionalItemsTotal = jobData.sections
+      .filter((section) => jobData.selectedSections.includes(section.id))
+      .reduce((sum, section) => {
+        return sum + (section.additionalItems || []).reduce((subSum, item) => subSum + (item.total || 0), 0)
+      }, 0)
+
     // Apply markup to each category, but only if markup percentage is greater than 0
     const equipmentWithMarkup =
       jobData.markup?.equipment > 0 ? equipmentTotal * (1 + (jobData.markup?.equipment || 0) / 100) : equipmentTotal
@@ -876,7 +985,13 @@ export default function JobCostDashboard() {
     const truckingWithMarkup =
       jobData.markup?.trucking > 0 ? truckingTotal * (1 + (jobData.markup?.trucking || 0) / 100) : truckingTotal
 
-    return equipmentWithMarkup + laborWithMarkup + materialsWithMarkup + truckingWithMarkup
+    // Apply materials markup to additional items as well
+    const additionalItemsWithMarkup =
+      jobData.markup?.materials > 0
+        ? additionalItemsTotal * (1 + (jobData.markup?.materials || 0) / 100)
+        : additionalItemsTotal
+
+    return equipmentWithMarkup + laborWithMarkup + materialsWithMarkup + truckingWithMarkup + additionalItemsWithMarkup
   }
 
   // Function to save job data to localStorage
@@ -1119,7 +1234,27 @@ export default function JobCostDashboard() {
       reader.onload = (e) => {
         try {
           const importedData = JSON.parse(e.target?.result as string)
-          setJobData(importedData)
+
+          // Handle both wrapped and unwrapped data formats
+          const dataToImport = importedData.jobData || importedData
+
+          // Ensure contactInfo exists with proper structure
+          if (!dataToImport.contactInfo) {
+            dataToImport.contactInfo = {
+              preparedBy: "",
+              phone: "",
+              email: "",
+            }
+          } else {
+            // Ensure all required fields exist
+            dataToImport.contactInfo = {
+              preparedBy: dataToImport.contactInfo.preparedBy || "",
+              phone: dataToImport.contactInfo.phone || "",
+              email: dataToImport.contactInfo.email || "",
+            }
+          }
+
+          setJobData(dataToImport)
           toast({
             title: "Job Data Imported",
             description: "Your job data has been imported successfully.",
@@ -1177,32 +1312,6 @@ export default function JobCostDashboard() {
     })
   }
 
-  // Calculate total area and tonnage for the job
-  const calculateTotals = () => {
-    let totalArea = 0
-    let totalTonnage = 0
-
-    jobData.sections.forEach((section) => {
-      if (jobData.selectedSections.includes(section.id)) {
-        totalArea += section.area || 0
-        totalTonnage += section.tons || 0
-      }
-    })
-
-    if (totalArea !== jobData.totalArea || totalTonnage !== jobData.totalTonnage) {
-      setJobData({
-        ...jobData,
-        totalArea,
-        totalTonnage,
-      })
-    }
-  }
-
-  // Calculate totals whenever sections or selected sections change
-  React.useEffect(() => {
-    calculateTotals()
-  }, [jobData.sections, jobData.selectedSections])
-
   // Set up autosave and check for autosaved data
   React.useEffect(() => {
     // Check for autosaved data when the component mounts
@@ -1245,7 +1354,7 @@ export default function JobCostDashboard() {
                 <Label htmlFor="preparedBy">Name</Label>
                 <Input
                   id="preparedBy"
-                  value={jobData.contactInfo.preparedBy}
+                  value={jobData.contactInfo?.preparedBy || ""}
                   onChange={(e) =>
                     setJobData({
                       ...jobData,
@@ -1262,7 +1371,7 @@ export default function JobCostDashboard() {
                 <Label htmlFor="phone">Phone</Label>
                 <Input
                   id="phone"
-                  value={jobData.contactInfo.phone}
+                  value={jobData.contactInfo?.phone || ""}
                   onChange={(e) =>
                     setJobData({
                       ...jobData,
@@ -1279,7 +1388,7 @@ export default function JobCostDashboard() {
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
-                  value={jobData.contactInfo.email}
+                  value={jobData.contactInfo?.email || ""}
                   onChange={(e) =>
                     setJobData({
                       ...jobData,
@@ -1363,7 +1472,7 @@ export default function JobCostDashboard() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="totalArea">Total Area (sq ft)</Label>
+                    <Label htmlFor="totalArea">Total Project Area (sq ft)</Label>
                     <Input
                       id="totalArea"
                       type="number"
@@ -1372,9 +1481,12 @@ export default function JobCostDashboard() {
                       onChange={(e) => setJobData({ ...jobData, totalArea: Number(e.target.value) || 0 })}
                       placeholder="Total Area"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This is the overall project area, independent of section areas
+                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="totalTonnage">Total Tonnage</Label>
+                    <Label htmlFor="totalTonnage">Total Project Tonnage</Label>
                     <Input
                       id="totalTonnage"
                       type="number"
@@ -1383,6 +1495,9 @@ export default function JobCostDashboard() {
                       onChange={(e) => setJobData({ ...jobData, totalTonnage: Number(e.target.value) || 0 })}
                       placeholder="Total Tonnage"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This is the overall project tonnage, independent of section tonnages
+                    </p>
                   </div>
                 </div>
 
@@ -1758,9 +1873,9 @@ export default function JobCostDashboard() {
                   {expandedSections[section.id] && (
                     <CardContent className="p-6 space-y-6">
                       {/* Section Dimensions */}
-                      <div className="border rounded-md p-4">
-                        <h3 className="text-lg font-medium mb-4">Section Dimensions (Optional)</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="border rounded-md p-4 bg-blue-50">
+                        <h3 className="text-lg font-medium mb-4 text-blue-800">📐 Section Area & Tonnage</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                           <div>
                             <Label htmlFor={`length-${section.id}`}>Length (ft)</Label>
                             <Input
@@ -1790,7 +1905,7 @@ export default function JobCostDashboard() {
                             />
                           </div>
                           <div>
-                            <Label htmlFor={`area-${section.id}`}>Area (sq ft)</Label>
+                            <Label htmlFor={`area-${section.id}`}>Section Area (sq ft)</Label>
                             <div className="flex items-center space-x-2">
                               <Input
                                 id={`area-${section.id}`}
@@ -1827,18 +1942,41 @@ export default function JobCostDashboard() {
                               </Button>
                             </div>
                           </div>
+                          <div>
+                            <Label htmlFor={`tons-${section.id}`}>Section Tonnage</Label>
+                            <Input
+                              id={`tons-${section.id}`}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={section.tons || ""}
+                              onChange={(e) => {
+                                const value = Number.parseFloat(e.target.value) || 0
+                                const updatedSection = { ...section, tons: value }
+                                setJobData({
+                                  ...jobData,
+                                  sections: jobData.sections.map((s) => (s.id === section.id ? updatedSection : s)),
+                                })
+                              }}
+                              placeholder="Enter tonnage"
+                            />
+                          </div>
                         </div>
 
                         {/* Area and Tonnage Display */}
-                        {section.area > 0 && (
-                          <div className="mt-4 grid grid-cols-2 gap-4 bg-blue-50 p-3 rounded-md">
+                        {(section.area > 0 || section.tons > 0) && (
+                          <div className="mt-4 grid grid-cols-2 gap-4 bg-blue-100 p-3 rounded-md">
                             <div>
-                              <p className="text-sm font-medium">Total Area:</p>
-                              <p className="text-lg">{section.area.toFixed(2)} sq ft</p>
+                              <p className="text-sm font-medium text-blue-800">Section Area:</p>
+                              <p className="text-lg font-bold text-blue-900">
+                                {section.area?.toFixed(2) || "0.00"} sq ft
+                              </p>
                             </div>
                             <div>
-                              <p className="text-sm font-medium">Total Tonnage:</p>
-                              <p className="text-lg">{section.tons?.toFixed(2) || "0.00"} tons</p>
+                              <p className="text-sm font-medium text-blue-800">Section Tonnage:</p>
+                              <p className="text-lg font-bold text-blue-900">
+                                {section.tons?.toFixed(2) || "0.00"} tons
+                              </p>
                             </div>
                           </div>
                         )}
@@ -1852,9 +1990,125 @@ export default function JobCostDashboard() {
                           materials={section.materials || []}
                           updateMaterialItem={updateMaterialItem}
                           addMaterialItem={addMaterialItem}
+                          addCustomMaterialItem={addCustomMaterialItem}
                           removeMaterialItem={removeMaterialItem}
                           recalculateTonnage={recalculateTonnage}
                         />
+                      </div>
+
+                      {/* Additional Items Section */}
+                      <div className="border rounded-md p-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-medium">Additional Items</h3>
+                          <Button size="sm" onClick={() => addAdditionalItem(section.id)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Item
+                          </Button>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Unit</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Rate</TableHead>
+                              <TableHead>Total</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(section.additionalItems || []).map((item, index) => (
+                              <TableRow key={`additional-${section.id}-${index}`}>
+                                <TableCell>
+                                  <Input
+                                    value={item.description || ""}
+                                    onChange={(e) =>
+                                      updateAdditionalItem(section.id, index, "description", e.target.value)
+                                    }
+                                    placeholder="Enter description"
+                                    className="w-[200px]"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={item.unit}
+                                    onValueChange={(value) => updateAdditionalItem(section.id, index, "unit", value)}
+                                  >
+                                    <SelectTrigger className="w-[120px]">
+                                      <SelectValue placeholder="Unit" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {additionalItemUnits.map((unit) => (
+                                        <SelectItem key={unit} value={unit}>
+                                          {unit}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={
+                                      typeof item.quantity === "string" && item.quantity === ""
+                                        ? ""
+                                        : item.quantity || 0
+                                    }
+                                    onChange={(e) => {
+                                      const raw = e.target.value
+                                      updateAdditionalItem(section.id, index, "quantity", raw === "" ? "" : Number(raw))
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === "") {
+                                        updateAdditionalItem(section.id, index, "quantity", 0)
+                                      }
+                                    }}
+                                    className="w-24"
+                                    placeholder="0"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={typeof item.rate === "string" && item.rate === "" ? "" : item.rate || 0}
+                                    onChange={(e) => {
+                                      const raw = e.target.value
+                                      updateAdditionalItem(section.id, index, "rate", raw === "" ? "" : Number(raw))
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === "") {
+                                        updateAdditionalItem(section.id, index, "rate", 0)
+                                      }
+                                    }}
+                                    className="w-24"
+                                    placeholder="0.00"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <span className="font-medium">${item.total?.toFixed(2) || "0.00"}</span>
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    onClick={() => removeAdditionalItem(section.id, index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {(!section.additionalItems || section.additionalItems.length === 0) && (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center py-4 text-gray-500">
+                                  No additional items added yet. Click "Add Item" to add one.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
                       </div>
 
                       {/* Equipment Section */}
@@ -2258,16 +2512,12 @@ export default function JobCostDashboard() {
                       <p className="text-lg font-bold">${calculateSectionTotal(section).toFixed(2)}</p>
                     </div>
                     <div className="text-right">
-                      {section.area ? (
-                        <p className="text-sm font-medium">Area: {section.area.toFixed(2)} sq ft</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No area specified</p>
-                      )}
-                      {section.tons ? (
-                        <p className="text-sm font-medium">Tonnage: {section.tons.toFixed(2)} tons</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No tonnage specified</p>
-                      )}
+                      <p className="text-sm font-medium text-blue-700">
+                        📐 Area: {section.area?.toFixed(2) || "0.00"} sq ft
+                      </p>
+                      <p className="text-sm font-medium text-blue-700">
+                        ⚖️ Tonnage: {section.tons?.toFixed(2) || "0.00"} tons
+                      </p>
                     </div>
                   </CardFooter>
                 </Card>
